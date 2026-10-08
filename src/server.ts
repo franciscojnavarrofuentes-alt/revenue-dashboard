@@ -28,13 +28,14 @@ function apiData() {
     }).filter(Boolean);
 
     const lastError = db.prepare('SELECT source, error, at FROM runs WHERE protocol = ? AND ok = 0 AND at > ? ORDER BY at DESC LIMIT 1').get(p.id, now() - 86400);
-    return { id: p.id, name: p.name, coverageNote: p.coverageNote, windows, llamaDaily, calibration, lastError: lastError ?? null };
+    return { id: p.id, name: p.name, enabled: p.enabled, coverageNote: p.coverageNote, windows, llamaDaily, calibration, lastError: lastError ?? null };
   });
 
   const alerts = db.prepare('SELECT protocol, window_end, rule, value, baseline, score, message, created_at FROM alerts ORDER BY window_end DESC, created_at DESC LIMIT 50').all();
   const lastRun = db.prepare('SELECT MAX(at) AS at FROM runs WHERE ok = 1').get() as { at: number | null };
+  const helius = db.prepare('SELECT COALESCE(SUM(credits), 0) AS credits30d FROM helius_usage WHERE at > ?').get(now() - 30 * 86400) as { credits30d: number };
 
-  return { generatedAt: now(), windowHours: WINDOW_HOURS, windowSeconds: WINDOW_SECONDS, lastRun: lastRun.at, rankingAt: lastSnap.ts, ranking, tracked, alerts };
+  return { generatedAt: now(), windowHours: WINDOW_HOURS, windowSeconds: WINDOW_SECONDS, lastRun: lastRun.at, heliusCredits30d: helius.credits30d, rankingAt: lastSnap.ts, ranking, tracked, alerts };
 }
 
 function authorized(req: http.IncomingMessage): boolean {

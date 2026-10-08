@@ -182,7 +182,7 @@ function barChart(container, windows, alertEnds, windowSeconds) {
 function renderCards(data) {
   const cards = document.getElementById('cards');
   cards.innerHTML = '';
-  for (const p of data.tracked) {
+  for (const p of [...data.tracked].sort((a, b) => Number(b.enabled) - Number(a.enabled))) {
     const ws = p.windows, last = ws.at(-1);
     const hist = ws.slice(0, -1);
     const avg = hist.length ? hist.reduce((a, w) => a + w.revenue, 0) / hist.length : null;
@@ -199,7 +199,7 @@ function renderCards(data) {
         <div>
           <div class="card-title">${esc(p.name)}</div>
           <div class="hero">${last ? fmtUsd(last.revenue) : '—'}</div>
-          <div class="sub">${last ? `última ventana · cierra ${when(last.window_end)}` : 'sin datos aún'}</div>
+          <div class="sub">${!p.enabled ? 'desactivado' : last ? `última ventana · cierra ${when(last.window_end)}` : 'sin datos aún'}</div>
         </div>
         <div class="stats">
           <div>vs media 14d <span class="${pctClass(vsAvg)}">${fmtPct(vsAvg)}</span></div>
@@ -245,7 +245,8 @@ async function load() {
     const data = await (await fetch('/api/data', { cache: 'no-store' })).json();
     const next = Math.ceil(Date.now() / 1000 / data.windowSeconds) * data.windowSeconds;
     document.getElementById('status').innerHTML =
-      `Última recogida <b>${data.lastRun ? when(data.lastRun) : '—'}</b> · próxima ventana cierra <b>${when(next)}</b>`;
+      `Última recogida <b>${data.lastRun ? when(data.lastRun) : '—'}</b> · próxima ventana cierra <b>${when(next)}</b>` +
+      (data.heliusCredits30d ? ` · Helius <b>${Math.round(data.heliusCredits30d).toLocaleString('es-ES')}</b> créditos (30d)` : '');
     lastData = data;
     renderCards(data); renderAlerts(data); renderRanking(data);
   } catch (e) {

@@ -13,7 +13,8 @@
     "backfill": "node --disable-warning=ExperimentalWarning --import tsx src/collect.ts --backfill-days 14",
     "serve": "node --disable-warning=ExperimentalWarning --import tsx src/server.ts",
     "typecheck": "tsc --noEmit",
-    "demo:seed": "node --disable-warning=ExperimentalWarning --import tsx src/demo-seed.ts"
+    "demo:seed": "node --disable-warning=ExperimentalWarning --import tsx src/demo-seed.ts",
+    "probe:solana": "node --disable-warning=ExperimentalWarning --import tsx src/probe-solana.ts"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

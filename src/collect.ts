@@ -8,18 +8,34 @@
  * Uso: npm run collect               → rellena las últimas 3 ventanas (1 día) que falten
  *      npm run collect -- --backfill-days 14
  */
-import { TRACKED, TrackedProtocol, WINDOWS_PER_DAY, WINDOW_HOURS } from './config.js';
-import { failCount, hasWindow, logRun, now, saveWindow } from './db.js';
+import { TRACKED, TrackedProtocol, WINDOWS_PER_DAY, WINDOW_HOURS, WINDOW_SECONDS, type Source } from './config.js';
+import { failCount, hasWindow, logHeliusUsage, logRun, now, saveWindow } from './db.js';
 import { processAlerts, usd } from './alerts.js';
 import { adapterWindowRevenue } from './collectors/adapter.js';
 import { collectLlamaDaily, collectLlamaRanking } from './collectors/defillama.js';
 import { hyperliquidWindowRevenue, snapshotHyperliquid } from './collectors/hyperliquid.js';
+import { solanaWindowRevenue } from './collectors/solana.js';
 import { iso, recentWindowEnds } from './windows.js';
 
 const argDays = process.argv.indexOf('--backfill-days');
 const backfillDays = argDays > 0 ? Number(process.argv[argDays + 1]) : 1;
 const MAX_RETRIES = 3;
 const only = process.argv.indexOf('--only') > 0 ? process.argv[process.argv.indexOf('--only') + 1] : null;
+
+async function sourceRevenue(p: TrackedProtocol, s: Source, end: number): Promise<number> {
+  switch (s.kind) {
+    case 'hypurrscan':
+      return hyperliquidWindowRevenue(end, s.revenueRatio);
+    case 'adapter':
+      return (await adapterWindowRevenue(s.path, end)).revenue;
+    case 'solana': {
+      const r = await solanaWindowRevenue(s.spec, end, WINDOW_SECONDS);
+      logHeliusUsage(p.id, s.id, end, r.transactions, r.credits);
+      console.log(`    ${r.transactions} transacciones · ${r.credits} créditos Helius · fees $${r.feesUsd.toFixed(0)} − pagos $${r.payoutsUsd.toFixed(0)}`);
+      return r.revenueUsd;
+    }
+  }
+}
 
 async function collectProtocol(p: TrackedProtocol): Promise<number[]> {
   const ends = recentWindowEnds(now(), p.lagHours, backfillDays * WINDOWS_PER_DAY);
@@ -34,9 +50,7 @@ async function collectProtocol(p: TrackedProtocol): Promise<number[]> {
       // Tras 3 fallos dejamos esa ventana (evita gastar créditos de Dune en bucle)
       if (failCount(p.id, s.id, end) >= MAX_RETRIES) { allOk = false; continue; }
       try {
-        const revenue = s.kind === 'hypurrscan'
-          ? hyperliquidWindowRevenue(end, s.revenueRatio)
-          : (await adapterWindowRevenue(s.path, end)).revenue;
+        const revenue = await sourceRevenue(p, s, end);
         saveWindow(p.id, s.id, end, WINDOW_HOURS, revenue);
         logRun(p.id, s.id, end, true);
         console.log(`  ✓ ${p.name} · ${s.id} · ${iso(end)} → ${usd(revenue)}`);
@@ -75,7 +89,7 @@ async function main() {
   }
 
   let alerts = 0;
-  for (const p of TRACKED.filter(t => !only || t.id === only)) {
+  for (const p of TRACKED.filter(t => t.enabled && (!only || t.id === only))) {
     const done = await collectProtocol(p);
     // Solo alertamos sobre ventanas del último día (no sobre el histórico de un backfill)
     for (const end of done.filter(e => e > now() - 86400)) alerts += await processAlerts(p, end);

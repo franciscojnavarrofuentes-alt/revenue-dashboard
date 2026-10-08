@@ -14,6 +14,13 @@ async function main() {
   if (!adapterPath || !endArg || !windowArg) throw new Error('uso: run-adapter <adapter> <window_end> <window_seconds>');
 
   const cwd = process.cwd();
+
+  // pumpdotfun solo usa Allium para la recompra de PUMP (dailyHoldersRevenue), que no medimos:
+  // sin ALLIUM_API_KEY devolvemos una fila vacía en vez de tumbar todo el adapter.
+  const ALLIUM_OPTIONAL = ['fees/pumpdotfun.ts'];
+  if (!process.env.ALLIUM_API_KEY && ALLIUM_OPTIONAL.includes(adapterPath)) {
+    require(path.join(cwd, 'helpers/allium')).queryAllium = async () => [{}];
+  }
   const runAdapter = require(path.join(cwd, 'adapters/utils/runAdapter')).default;
   const mod = require(path.join(cwd, adapterPath));
   const module = mod.default ?? mod;

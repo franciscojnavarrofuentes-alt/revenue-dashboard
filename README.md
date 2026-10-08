@@ -8,7 +8,8 @@ Dashboard de revenue de protocolos crypto, al estilo de [DefiLlama Revenue](http
 |---|---|---|
 | Top 10 por revenue | API de DefiLlama (`/overview/fees`), agrupado por protocolo padre como en la web | Dato diario (último día completo), refrescado cada hora |
 | Hyperliquid | Fees acumulados de Hypurrscan: snapshot horario, revenue = Δfees × 99% | Ventanas de 8h |
-| Pump, Axiom Pro, GMGN | Los mismos [adapters open source de DefiLlama](https://github.com/DefiLlama/dimension-adapters), ejecutados con ventana de 8h (Dune) | Ventanas de 8h |
+| Axiom Pro, GMGN | Transacciones de sus wallets de fees en Solana vía [Helius](https://helius.dev) (`getTransactionsForAddress`), con la misma lógica que los adapters de DefiLlama: fees − cashback/referidos | Ventanas de 8h |
+| Pump | [Adapter open source de DefiLlama](https://github.com/DefiLlama/dimension-adapters) ejecutado con ventana de 8h. Necesita Dune con créditos (`ENABLE_DUNE=true`) | Ventanas de 8h (desactivado por defecto) |
 
 Las ventanas se cierran a las **00:00, 08:00 y 16:00 UTC** (02:00, 10:00 y 18:00 en Madrid en horario de verano). Cada ventana se pide con 1–2h de margen por el retraso de indexado de Dune.
 
@@ -31,9 +32,10 @@ Se guardan en la base de datos y se ven en el dashboard. Si configuras Telegram 
 git clone https://github.com/franciscojnavarrofuentes-alt/revenue-dashboard.git /opt/revenue-dashboard
 cd /opt/revenue-dashboard
 sudo bash deploy/install.sh          # instala Node 22, dependencias, adapters y servicios
-sudo nano .env                       # DUNE_API_KEYS, DASHBOARD_USER, DASHBOARD_PASS
+sudo nano .env                       # HELIUS_API_KEY, DASHBOARD_USER, DASHBOARD_PASS
 sudo systemctl restart revenue-dashboard
-sudo -u revenue npm run backfill     # opcional: 14 días de histórico para Pump/Axiom/GMGN (gasta créditos de Dune)
+sudo -u revenue npm run probe:solana -- axiom 1   # mide 1h y proyecta el consumo mensual de Helius
+sudo -u revenue npm run backfill     # opcional: 14 días de histórico (gasta créditos de Helius)
 ```
 
 El dashboard queda en `http://<IP-del-VPS>:3000`. Pon `DASHBOARD_USER` y `DASHBOARD_PASS` para protegerlo con contraseña.
@@ -56,6 +58,7 @@ src/
   collectors/
     defillama.ts        ranking Top N + dato diario para calibrar
     adapter.ts          ejecuta un adapter de DefiLlama con ventana de 8h
+    solana.ts           fees on-chain en Solana vía Helius (Axiom, GMGN)
     hyperliquid.ts      snapshots de fees de Hypurrscan
   alerts.ts             reglas de alerta
   notify.ts             Telegram
@@ -75,4 +78,6 @@ deploy/                 instalación y servicios systemd
 
 - **Hyperliquid:** el histórico de Hypurrscan es diario. Las ventanas de 8h empiezan a contar desde la instalación y las alertas por z-score se activan tras 3 días.
 - **Hyperliquid (precisión):** la cifra es una aproximación. DefiLlama usa un indexer propio no público; el % de cobertura indica la desviación.
-- **Dune:** los adapters de Pump, Axiom y GMGN consumen créditos de Dune en cada ventana (3 al día × 4 queries). Una ventana que falla 3 veces se deja de reintentar.
+- **Helius:** cada 100 transacciones leídas cuestan 10 créditos. El consumo de los últimos 30 días se ve arriba del dashboard; usa `probe:solana` antes de añadir protocolos con mucho volumen.
+- **Axiom y GMGN** solo se miden en Solana (no BSC ni otras EVM); el % de cobertura indica cuánto del total de DefiLlama representa.
+- **Pump** depende de Dune. Una ventana que falla 3 veces se deja de reintentar.

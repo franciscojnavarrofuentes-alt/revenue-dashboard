@@ -53,6 +53,16 @@ CREATE TABLE IF NOT EXISTS runs (
   at         INTEGER NOT NULL
 );
 
+-- Consumo de Helius por ventana (para vigilar el límite del plan)
+CREATE TABLE IF NOT EXISTS helius_usage (
+  protocol     TEXT NOT NULL,
+  source       TEXT NOT NULL,
+  window_end   INTEGER NOT NULL,
+  transactions INTEGER NOT NULL,
+  credits      INTEGER NOT NULL,
+  at           INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS alerts (
   protocol   TEXT NOT NULL,
   window_end INTEGER NOT NULL,
@@ -100,4 +110,9 @@ export function failCount(protocol: string, source: string, windowEnd: number): 
   const r = db.prepare('SELECT COUNT(*) AS n FROM runs WHERE protocol = ? AND source = ? AND window_end = ? AND ok = 0')
     .get(protocol, source, windowEnd) as { n: number };
   return r.n;
+}
+
+export function logHeliusUsage(protocol: string, source: string, windowEnd: number, transactions: number, credits: number) {
+  db.prepare('INSERT INTO helius_usage (protocol, source, window_end, transactions, credits, at) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(protocol, source, windowEnd, transactions, credits, now());
 }
