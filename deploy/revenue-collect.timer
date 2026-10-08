@@ -1,0 +1,11 @@
+[Unit]
+Description=Recogida de revenue cada hora
+
+[Timer]
+# Cada hora en el minuto 2 (UTC). La snapshot de Hyperliquid necesita ejecuciones horarias;
+# las ventanas de 8h de Dune solo se piden cuando cierran (+2h de margen de indexado).
+OnCalendar=*-*-* *:02:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target

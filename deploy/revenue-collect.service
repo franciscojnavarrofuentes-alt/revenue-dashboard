@@ -1,0 +1,10 @@
+[Unit]
+Description=Revenue dashboard (recogida de datos)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=__APP_USER__
+WorkingDirectory=__APP_DIR__
+ExecStart=/usr/bin/npm run collect
+TimeoutStartSec=45min

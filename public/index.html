@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revenue Dashboard</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f4f2;
+    --surface-1: #fcfcfb;
+    --border: #e4e3df;
+    --grid: #ecebe7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #8a8984;
+    --series-1: #2a78d6;
+    --series-1-soft: #2a78d61f;
+    --good: #008300;
+    --critical: #d03b3b;
+    --warning: #b87a00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111110;
+      --surface-1: #1a1a19;
+      --border: #2c2c2a;
+      --grid: #262624;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #8f8e86;
+      --series-1: #3987e5;
+      --series-1-soft: #3987e526;
+      --good: #3fb950;
+      --critical: #e66767;
+      --warning: #e0a526;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111110; --surface-1: #1a1a19; --border: #2c2c2a; --grid: #262624;
+    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --series-1-soft: #3987e526;
+    --good: #3fb950; --critical: #e66767; --warning: #e0a526;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text-primary);
+    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 20px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 15px; margin: 32px 0 12px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  .meta { color: var(--text-secondary); font-size: 13px; }
+  .meta b { color: var(--text-primary); font-weight: 600; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 16px; }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 16px 12px; min-width: 0; }
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  .card-title { font-weight: 650; font-size: 16px; }
+  .hero { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin-top: 2px; }
+  .sub { color: var(--text-secondary); font-size: 12.5px; }
+  .delta { font-weight: 600; white-space: nowrap; }
+  .delta.up { color: var(--good); } .delta.down { color: var(--critical); }
+  .stats { text-align: right; font-size: 12.5px; color: var(--text-secondary); }
+  .stats div b { color: var(--text-primary); font-weight: 600; }
+  @media (max-width: 520px) {
+    .card-head { flex-direction: column; gap: 8px; }
+    .stats { text-align: left; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+  }
+  .note { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
+  .err { color: var(--critical); font-size: 12px; margin-top: 6px; word-break: break-word; }
+  .empty { color: var(--text-muted); font-size: 13px; padding: 40px 0; text-align: center; }
+
+  .chart { position: relative; margin-top: 10px; }
+  .chart svg { display: block; width: 100%; height: 170px; overflow: visible; }
+  .tip {
+    position: absolute; pointer-events: none; background: var(--text-primary); color: var(--surface-1);
+    padding: 6px 8px; border-radius: 6px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -100%);
+    opacity: 0; transition: opacity .08s;
+  }
+
+  table { width: 100%; border-collapse: collapse; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th { font-size: 12px; color: var(--text-secondary); font-weight: 600; background: var(--surface-1); }
+  th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; }
+  tr:last-child td { border-bottom: 0; }
+  .table-wrap { overflow-x: auto; border-radius: 12px; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--series-1-soft); color: var(--text-primary); margin-left: 6px; }
+  .muted { color: var(--text-muted); }
+
+  .alerts { list-style: none; margin: 0; padding: 0; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; }
+  .alerts li { padding: 10px 14px; border-bottom: 1px solid var(--grid); display: flex; gap: 10px; align-items: baseline; }
+  .alerts li:last-child { border-bottom: 0; }
+  .alerts .when { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-top: 4px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Revenue de protocolos</h1>
+      <div class="meta">Ventanas de 8h (00:00 · 08:00 · 16:00 UTC) para los protocolos seguidos · ranking diario de DefiLlama</div>
+    </div>
+    <div class="meta" id="status">Cargando…</div>
+  </header>
+
+  <h2>Seguimiento cada 8h</h2>
+  <div class="grid" id="cards"></div>
+
+  <h2>Alertas recientes</h2>
+  <ul class="alerts" id="alerts"></ul>
+
+  <h2>Top 10 por revenue · DefiLlama (último día completo)</h2>
+  <div class="table-wrap"><table id="ranking"></table></div>
+</main>
+
+<script>
+const fmtUsd = v => v == null || isNaN(v) ? '—'
+  : Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(2)}B`
+  : Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(2)}M`
+  : Math.abs(v) >= 1e3 ? `$${(v / 1e3).toFixed(1)}K`
+  : `$${v.toFixed(0)}`;
+const fmtPct = v => v == null || isNaN(v) ? '—' : `${v > 0 ? '▲ +' : v < 0 ? '▼ ' : ''}${v.toFixed(1)}%`;
+const pctClass = v => v > 0 ? 'delta up' : v < 0 ? 'delta down' : 'delta';
+const dtf = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
+const hm = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
+const when = ts => dtf.format(new Date(ts * 1000));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+function barChart(container, windows, alertEnds, windowSeconds) {
+  const W = Math.max(280, Math.round(container.clientWidth || 560)), H = 170, padL = 44, padB = 20, padT = 14;
+  if (!windows.length) { container.innerHTML = '<div class="empty">Sin ventanas todavía</div>'; return; }
+  const max = Math.max(...windows.map(w => w.revenue)) * 1.1 || 1;
+  const mean = windows.reduce((a, w) => a + w.revenue, 0) / windows.length;
+  const n = windows.length, slot = (W - padL) / n, bw = Math.max(2, slot - 2);
+  const y = v => padT + (H - padT - padB) * (1 - v / max);
+  const ticks = [0, max / 2, max].map(v => `
+    <line x1="${padL}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" />
+    <text x="${padL - 6}" y="${y(v) + 4}" text-anchor="end" font-size="10.5" fill="var(--text-muted)">${fmtUsd(v)}</text>`).join('');
+  const bars = windows.map((w, i) => {
+    const x = padL + i * slot + 1, top = y(w.revenue), h = Math.max(1, H - padB - top);
+    const flagged = alertEnds.has(w.window_end);
+    return `<g data-i="${i}">
+      <rect x="${padL + i * slot}" y="${padT}" width="${slot}" height="${H - padT - padB}" fill="transparent" />
+      <path d="M${x},${H - padB} V${top + Math.min(3, h)} q0,-3 3,-3 h${bw - 6} q3,0 3,3 V${H - padB} Z" fill="var(--series-1)" opacity="${i === n - 1 ? 1 : .78}" />
+      ${flagged ? `<circle cx="${x + bw / 2}" cy="${top - 7}" r="4" fill="var(--warning)" stroke="var(--surface-1)" stroke-width="2" />` : ''}
+    </g>`;
+  }).join('');
+  const days = windows.filter(w => w.window_end % 86400 === 0).map(w => {
+    const i = windows.indexOf(w);
+    const d = new Date((w.window_end - 1) * 1000);
+    return `<text x="${padL + i * slot + slot / 2}" y="${H - 5}" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">${d.getUTCDate()}/${d.getUTCMonth() + 1}</text>`;
+  }).filter((_, i, a) => a.length <= Math.floor(W / 70) || i % Math.ceil(a.length / Math.floor(W / 70)) === 0).join('');
+  container.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Revenue por ventana de 8h">
+      ${ticks}
+      <line x1="${padL}" x2="${W}" y1="${y(mean)}" y2="${y(mean)}" stroke="var(--text-secondary)" stroke-dasharray="4 4" />
+      ${bars}${days}
+    </svg><div class="tip"></div>`;
+  const tip = container.querySelector('.tip'), svg = container.querySelector('svg');
+  svg.querySelectorAll('g[data-i]').forEach(g => {
+    g.addEventListener('mouseenter', () => {
+      const w = windows[+g.dataset.i];
+      const r = svg.getBoundingClientRect(), cr = container.getBoundingClientRect();
+      const x = (padL + (+g.dataset.i + .5) * slot) / W * r.width;
+      tip.innerHTML = `<b>${fmtUsd(w.revenue)}</b> · ${when(w.window_end - windowSeconds)} → ${hm.format(new Date(w.window_end * 1000))}${alertEnds.has(w.window_end) ? ' · ⚠ alerta' : ''}`;
+      tip.style.left = `${Math.min(Math.max(x, 120), cr.width - 120)}px`;
+      tip.style.top = `${y(w.revenue) / H * r.height - 10}px`;
+      tip.style.opacity = 1;
+    });
+    g.addEventListener('mouseleave', () => { tip.style.opacity = 0; });
+  });
+}
+
+function renderCards(data) {
+  const cards = document.getElementById('cards');
+  cards.innerHTML = '';
+  for (const p of data.tracked) {
+    const ws = p.windows, last = ws.at(-1);
+    const hist = ws.slice(0, -1);
+    const avg = hist.length ? hist.reduce((a, w) => a + w.revenue, 0) / hist.length : null;
+    const vsAvg = last && avg ? (last.revenue / avg - 1) * 100 : null;
+    const sameYesterday = last && ws.find(w => w.window_end === last.window_end - 86400);
+    const vsYesterday = sameYesterday && sameYesterday.revenue > 0 ? (last.revenue / sameYesterday.revenue - 1) * 100 : null;
+    const ratio = p.calibration.length ? p.calibration.reduce((a, c) => a + c.ours, 0) / p.calibration.reduce((a, c) => a + c.llama, 0) : null;
+    const alertEnds = new Set(data.alerts.filter(a => a.protocol === p.id).map(a => a.window_end));
+
+    const el = document.createElement('section');
+    el.className = 'card';
+    el.innerHTML = `
+      <div class="card-head">
+        <div>
+          <div class="card-title">${esc(p.name)}</div>
+          <div class="hero">${last ? fmtUsd(last.revenue) : '—'}</div>
+          <div class="sub">${last ? `última ventana · cierra ${when(last.window_end)}` : 'sin datos aún'}</div>
+        </div>
+        <div class="stats">
+          <div>vs media 14d <span class="${pctClass(vsAvg)}">${fmtPct(vsAvg)}</span></div>
+          <div>vs misma franja ayer <span class="${pctClass(vsYesterday)}">${fmtPct(vsYesterday)}</span></div>
+          <div>media 8h <b>${fmtUsd(avg)}</b></div>
+          <div title="Suma de nuestras 3 ventanas de un día ÷ dato diario de DefiLlama">cobertura vs DefiLlama <b>${ratio ? (ratio * 100).toFixed(0) + '%' : '—'}</b></div>
+        </div>
+      </div>
+      <div class="chart"></div>
+      <div class="legend"><span><i style="background:var(--series-1)"></i>Revenue por ventana de 8h</span><span><i style="background:none;border-top:1.5px dashed var(--text-secondary);height:0;border-radius:0"></i>Media del periodo</span>${alertEnds.size ? '<span><i style="background:var(--warning);border-radius:50%"></i>Ventana con alerta</span>' : ''}</div>
+      <div class="note">${esc(p.coverageNote)}</div>
+      ${p.lastError ? `<div class="err">⚠ Último error (${esc(p.lastError.source)}): ${esc(p.lastError.error).slice(0, 220)}</div>` : ''}`;
+    cards.appendChild(el);
+    barChart(el.querySelector('.chart'), ws, alertEnds, data.windowSeconds);
+  }
+}
+
+function renderAlerts(data) {
+  const ul = document.getElementById('alerts');
+  ul.innerHTML = data.alerts.length
+    ? data.alerts.slice(0, 15).map(a => `<li><span class="when">${when(a.window_end)}</span><span>${a.message}</span></li>`).join('')
+    : '<li class="muted">Ninguna alerta todavía. Se evalúan cuando hay al menos 3 días de histórico.</li>';
+}
+
+function renderRanking(data) {
+  const tracked = new Map(data.tracked.map(t => [t.name.toLowerCase(), t]));
+  const rows = data.ranking.map(r => `<tr>
+      <td class="muted">${r.rank}</td>
+      <td><b>${esc(r.name)}</b>${tracked.has(r.name.toLowerCase()) ? '<span class="tag">8h</span>' : ''}</td>
+      <td class="muted">${esc(r.category ?? '')}</td>
+      <td>${fmtUsd(r.rev24h)}</td>
+      <td><span class="${pctClass(r.change1d)}">${fmtPct(r.change1d)}</span></td>
+      <td>${fmtUsd(r.rev7d)}</td>
+      <td>${fmtUsd(r.rev30d)}</td>
+    </tr>`).join('');
+  document.getElementById('ranking').innerHTML = `
+    <thead><tr><th>#</th><th>Protocolo</th><th>Categoría</th><th>Revenue 24h</th><th>vs día anterior</th><th>7d</th><th>30d</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="7" class="muted">Sin datos todavía</td></tr>'}</tbody>`;
+}
+
+async function load() {
+  try {
+    const data = await (await fetch('/api/data', { cache: 'no-store' })).json();
+    const next = Math.ceil(Date.now() / 1000 / data.windowSeconds) * data.windowSeconds;
+    document.getElementById('status').innerHTML =
+      `Última recogida <b>${data.lastRun ? when(data.lastRun) : '—'}</b> · próxima ventana cierra <b>${when(next)}</b>`;
+    lastData = data;
+    renderCards(data); renderAlerts(data); renderRanking(data);
+  } catch (e) {
+    document.getElementById('status').textContent = 'No se pudieron cargar los datos';
+  }
+}
+let lastData = null;
+load();
+setInterval(load, 5 * 60_000);
+let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => lastData && renderCards(lastData), 150); });
+</script>
+</body>
+</html>
