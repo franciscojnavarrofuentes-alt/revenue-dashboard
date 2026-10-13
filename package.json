@@ -2,20 +2,21 @@
   "name": "revenue-dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "Dashboard de revenue de protocolos crypto con ventanas de 8h y alertas",
+  "description": "Revenue del d\u00eda en curso del Top 100 de DefiLlama, por horas, con alertas",
   "type": "module",
   "engines": {
     "node": ">=22.13"
   },
   "scripts": {
     "setup:adapters": "bash deploy/setup-adapters.sh",
+    "discover": "node --disable-warning=ExperimentalWarning --import tsx src/discover.ts",
+    "calibrate": "node --disable-warning=ExperimentalWarning --import tsx src/calibrate.ts",
     "collect": "node --disable-warning=ExperimentalWarning --import tsx src/collect.ts",
-    "backfill": "node --disable-warning=ExperimentalWarning --import tsx src/collect.ts --backfill-days 14",
     "serve": "node --disable-warning=ExperimentalWarning --import tsx src/server.ts",
-    "typecheck": "tsc --noEmit",
+    "validate": "node --disable-warning=ExperimentalWarning --import tsx src/validate.ts",
     "demo:seed": "node --disable-warning=ExperimentalWarning --import tsx src/demo-seed.ts",
-    "probe:solana": "node --disable-warning=ExperimentalWarning --import tsx src/probe-solana.ts",
-    "validate": "node --disable-warning=ExperimentalWarning --import tsx src/validate.ts"
+    "test": "node --disable-warning=ExperimentalWarning --import tsx --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

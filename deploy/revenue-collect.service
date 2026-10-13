@@ -7,4 +7,4 @@ Type=oneshot
 User=__APP_USER__
 WorkingDirectory=__APP_DIR__
 ExecStart=/usr/bin/npm run collect
-TimeoutStartSec=45min
+TimeoutStartSec=55min

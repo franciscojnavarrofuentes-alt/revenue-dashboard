@@ -7,8 +7,8 @@
  * último día de Hypurrscan con DefiLlama. Escribe un JSON con resultados y errores.
  */
 import fs from 'node:fs';
-import { SOLANA_SPECS } from './config.js';
-import { solanaWindowRevenue } from './collectors/solana.js';
+import { SOLANA_SPECS } from './methods/specs.js';
+import { solanaWindowRevenue } from './methods/solana.js';
 
 const outPath = process.argv[2] ?? 'validate.json';
 const now = Math.floor(Date.now() / 1000);
@@ -65,7 +65,7 @@ await step('hyperliquid', async () => {
   return { ayerNuestro: Math.round(ours), ayerDefiLlama: llama, ratio: llama ? +(ours / llama).toFixed(3) : null, puntos: [a.time, b.time, last.time], ultimoPuntoHaceMin: Math.round((now - last.time) / 60) };
 });
 
-for (const [id, slug] of [['gmgn', 'gmgn'], ['axiom', 'axiom-pro']] as const) {
+for (const [id, slug] of [['gmgnai', 'gmgn'], ['axiom', 'axiom-pro']] as const) {
   await step(`${id}_ayer`, async () => {
     const r = await solanaWindowRevenue(SOLANA_SPECS[id], today, 86400);
     const llama = await llamaDay(slug, yesterday);

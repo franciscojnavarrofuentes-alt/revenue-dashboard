@@ -1,30 +1,43 @@
-// Datos simulados para ver el dashboard sin conexión: DB_PATH=data/demo.db npm run demo:seed && DB_PATH=data/demo.db npm run serve
-import { TRACKED, WINDOW_SECONDS } from './config.js';
-import { db, now, saveWindow } from './db.js';
-import { evaluate, processAlerts } from './alerts.js';
-import { lastClosedWindowEnd } from './windows.js';
-const base: Record<string, number> = { hyperliquid: 640000, pump: 850000, axiom: 220000, gmgn: 190000 };
-const last = lastClosedWindowEnd(now(), 2);
-let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-for (const p of TRACKED) {
-  for (let i = 41; i >= 0; i--) {
-    const end = last - i * WINDOW_SECONDS;
-    const hour = new Date(end * 1000).getUTCHours();
-    const season = hour === 16 ? 1.25 : hour === 0 ? 0.85 : 0.9;
-    let v = base[p.id] * season * (0.85 + rnd() * 0.3);
-    if (i === 0 && p.id === 'pump') v *= 2.4; // pico para probar alertas
-    if (i === 0 && p.id === 'gmgn') v *= 0.4;
-    const share = 1 / p.sources.length;
-    for (const s of p.sources) saveWindow(p.id, s.id, end, 8, v * share);
+// Datos de EJEMPLO para ver el dashboard sin red (no son cifras reales):
+//   DB_PATH=data/demo.db npm run demo:seed && DB_PATH=data/demo.db npm run serve
+import { DAY, HOUR, HOUR_LAG_MIN, hourEnd, startOfDayUTC } from './config.js';
+import { db, now, saveHour, setPlan } from './db.js';
+
+const t = now();
+const day0 = startOfDayUTC(t);
+const last = hourEnd(t - HOUR_LAG_MIN * 60);
+let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+
+const demo: [string, string, number, string, string][] = [
+  // nombre, categoría, revenue diario, método, estado
+  ['Ejemplo Stable A', 'Stablecoin Issuer', 17_400_000, 'accrual', 'estimate'],
+  ['Ejemplo Stable B', 'Stablecoin Issuer', 7_000_000, 'accrual', 'estimate'],
+  ['Ejemplo Perps', 'Derivatives', 1_800_000, 'hypurrscan', 'live'],
+  ['Ejemplo Launchpad', 'Launchpad', 2_100_000, 'adapter', 'needs_key'],
+  ['Ejemplo Chain', 'Chain', 600_000, 'adapter', 'live'],
+  ['Ejemplo Bot A', 'Trading App', 430_000, 'solana', 'live'],
+  ['Ejemplo Bot B', 'Trading App', 580_000, 'solana', 'live'],
+  ['Ejemplo DEX', 'Dexs', 380_000, 'adapter', 'live'],
+  ['Ejemplo Lending', 'Lending', 300_000, 'adapter', 'mismatch'],
+  ['Ejemplo ETF', 'RWA', 590_000, 'accrual', 'estimate'],
+  ['Ejemplo Wallet', 'Wallets', 220_000, 'adapter', 'live'],
+  ['Ejemplo Prediction', 'Prediction Market', 440_000, 'adapter', 'daily_only'],
+];
+
+const ins = db.prepare(`INSERT OR REPLACE INTO universe (child, parent, parent_name, child_name, module, slug, category, parent_rank, llama_rev24h, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+demo.sort((a, b) => b[2] - a[2]).forEach(([name, cat, rev, method, status], i) => {
+  const id = `demo-${i}`;
+  ins.run(id, `p-${id}`, name, name, id, id, cat, i + 1, rev, t);
+  setPlan({ child: id, method, status, ratio: status === 'live' ? 0.9 + rnd() * 0.2 : null, note: 'Dato de ejemplo' });
+  if (status !== 'live') return;
+  const boost = name === 'Ejemplo Bot B' ? 1.7 : name === 'Ejemplo DEX' ? 0.5 : 1;
+  for (let he = day0 - DAY + HOUR; he <= last; he += HOUR) {
+    const h = new Date(he * 1000).getUTCHours();
+    const shape = 0.6 + 0.8 * Math.sin(((h + 6) / 24) * Math.PI) ** 2;
+    const factor = he > day0 ? boost : 1;
+    saveHour(id, he, (rev / 24) * shape * factor * (0.8 + rnd() * 0.4), method);
   }
-  for (let d = 13; d >= 1; d--) {
-    const day = Math.floor(now() / 86400) * 86400 - d * 86400;
-    const ours = (db.prepare('SELECT SUM(revenue) s FROM windows WHERE protocol=? AND window_end>? AND window_end<=?').get(p.id, day, day + 86400) as any).s;
-    if (ours) db.prepare('INSERT OR REPLACE INTO llama_daily VALUES (?,?,?)').run(p.id, day, ours / (p.id === 'pump' ? 0.93 : 0.99));
-  }
-  console.log(p.id, evaluate(p, last).map(a => `${a.rule} ${a.score.toFixed(1)}`));
-  await processAlerts(p, last);
-}
-const top = [['Tether','Stablecoin Issuer',17.46e6,121.31e6,512.04e6,-1.2],['Circle','Stablecoin Issuer',7.09e6,49.28e6,209.58e6,0.4],['Pump','Launchpad',2.74e6,18.64e6,60.7e6,6.9],['Hyperliquid','Derivatives',1.92e6,14.12e6,72.55e6,-3.1],['Tron','Chain',890063,5.81e6,23.98e6,1.1],['fomo','Trading App',726462,5.41e6,28.55e6,-8.4],['Axiom Pro','Trading App',686760,4.54e6,18.84e6,2.2],['Grayscale','RWA',621607,4.31e6,17.94e6,0],['GMGN','Trading App',583565,4.71e6,30.74e6,-12.5],['Sky','CDP',455409,3.12e6,13.48e6,0.8]];
-top.forEach((r, i) => db.prepare('INSERT INTO llama_snapshot VALUES (?,?,?,?,?,?,?,?,?)').run(now(), i + 1, String(r[0]), String(r[0]), String(r[1]), r[2], r[3], r[4], r[5]));
-db.prepare('INSERT INTO runs (protocol, source, window_end, ok, error, at) VALUES (?,?,?,?,?,?)').run(null, 'test', null, 1, null, now());
+});
+db.prepare('INSERT INTO runs (child, hour_end, kind, ok, at) VALUES (NULL, ?, ?, 1, ?)').run(last, 'hour', t);
+console.log('Datos de ejemplo cargados');

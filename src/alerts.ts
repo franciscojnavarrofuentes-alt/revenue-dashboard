@@ -1,74 +1,72 @@
-import { ALERTS, TrackedProtocol, WINDOWS_PER_DAY, WINDOW_HOURS } from './config.js';
-import { db, now, protocolWindows } from './db.js';
+import { ALERTS, DAY, HOUR, HOUR_LAG_MIN, hourEnd, startOfDayUTC } from './config.js';
+import { db, now } from './db.js';
 import { notify } from './notify.js';
+import type { ParentToday } from './today.js';
 
 export const usd = (v: number) =>
-  v >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`;
+  Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${v.toFixed(0)}`;
 
-// Franja en hora de Madrid, p. ej. "jue 08/10 02:00–10:00"
-const madrid = (ts: number, opts: Intl.DateTimeFormatOptions) =>
-  new Intl.DateTimeFormat('es-ES', { timeZone: 'Europe/Madrid', ...opts }).format(new Date(ts * 1000));
-const hhmm = (ts: number) =>
-  `la franja ${madrid(ts - WINDOW_HOURS * 3600, { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}–${madrid(ts, { hour: '2-digit', minute: '2-digit' })}`;
+type NewAlert = { id: string; parent: string; rule: string; value: number; baseline: number; score: number; message: string };
 
-type Alert = { rule: string; value: number; baseline: number; score: number; message: string };
+/** Reglas sobre la vista de hoy (función pura salvo la consulta de horas previas) */
+export function evaluate(parents: ParentToday[], nowTs: number, hoursElapsed: number): NewAlert[] {
+  const out: NewAlert[] = [];
+  const day0 = startOfDayUTC(nowTs);
+  const lastHour = hourEnd(nowTs - HOUR_LAG_MIN * 60);
+  const day = new Date(day0 * 1000).toISOString().slice(0, 10);
+  const hh = (ts: number) => new Date(ts * 1000).toISOString().slice(11, 16);
 
-/** Evalúa las reglas para una ventana concreta del protocolo */
-export function evaluate(p: TrackedProtocol, windowEnd: number): Alert[] {
-  const series = protocolWindows(p.id, p.sources.length);
-  const idx = series.findIndex(w => w.window_end === windowEnd);
-  if (idx < 0) return [];
-  const value = series[idx].revenue;
-  const alerts: Alert[] = [];
+  for (const p of parents) {
+    if (!(p.status === 'live' || p.status === 'partial') || p.yesterday < ALERTS.minDailyUsd) continue;
+    const complete = p.hoursMissing === 0;
 
-  // 1. z-score frente a las últimas 14 días de ventanas de 8h
-  const hist = series.slice(Math.max(0, idx - ALERTS.baselineWindows), idx).map(w => w.revenue);
-  if (hist.length >= ALERTS.minHistory) {
-    const mean = hist.reduce((a, b) => a + b, 0) / hist.length;
-    const std = Math.sqrt(hist.reduce((a, b) => a + (b - mean) ** 2, 0) / hist.length);
-    if (std > 0) {
-      const z = (value - mean) / std;
-      if (Math.abs(z) >= ALERTS.zscore) {
-        const dir = z > 0 ? '🚀 por encima' : '📉 por debajo';
-        alerts.push({
-          rule: 'zscore', value, baseline: mean, score: z,
-          message: `<b>${p.name}</b>: revenue ${usd(value)} en ${hhmm(windowEnd)} — ${dir} de su media de ${hist.length} ventanas (${usd(mean)}), z = ${z.toFixed(1)}`,
+    // 1. Acumulado de hoy vs ayer a la misma hora
+    if (complete && hoursElapsed >= ALERTS.minHoursElapsed && p.yesterdaySameTime && p.yesterdaySameTime > 0) {
+      const live = p.todayLive, base = p.yesterdaySameTime - p.todayEstimate;
+      if (base > 0) {
+        const pct = (live / base - 1) * 100;
+        if (Math.abs(pct) >= ALERTS.todayVsYesterdayPct) {
+          out.push({
+            id: `today-${p.parent}-${day}-${pct > 0 ? 'up' : 'down'}`, parent: p.parent, rule: 'hoy_vs_ayer', value: live, baseline: base, score: pct,
+            message: `${pct > 0 ? '🚀' : '📉'} <b>${p.name}</b>: ${usd(live)} hoy hasta las ${hh(lastHour)} UTC, ${pct > 0 ? '+' : ''}${pct.toFixed(0)}% vs ayer a la misma hora (${usd(base)})`,
+          });
+        }
+      }
+    }
+
+    // 2. Última hora vs la misma hora de los 7 días anteriores
+    const rows = db.prepare(`SELECT h.hour_end AS he, SUM(h.revenue) AS r FROM hours h JOIN universe u ON u.child = h.child
+                             WHERE u.parent = ? AND (h.hour_end = ? OR (h.hour_end < ? AND h.hour_end >= ? AND (? - h.hour_end) % ? = 0))
+                             GROUP BY h.hour_end`)
+      .all(p.parent, lastHour, lastHour, lastHour - 7 * DAY, lastHour, DAY) as { he: number; r: number }[];
+    const cur = rows.find(r => r.he === lastHour);
+    const prev = rows.filter(r => r.he !== lastHour).map(r => r.r);
+    if (cur && prev.length >= ALERTS.hourMinSamples) {
+      const mean = prev.reduce((a, b) => a + b, 0) / prev.length;
+      const pct = mean > 0 ? (cur.r / mean - 1) * 100 : 0;
+      if (mean > 0 && Math.abs(pct) >= ALERTS.hourVsSameHourPct) {
+        out.push({
+          id: `hour-${p.parent}-${lastHour}`, parent: p.parent, rule: 'hora_vs_media', value: cur.r, baseline: mean, score: pct,
+          message: `⏱️ <b>${p.name}</b>: ${usd(cur.r)} en la hora ${hh(lastHour - HOUR)}–${hh(lastHour)} UTC, ${pct > 0 ? '+' : ''}${pct.toFixed(0)}% vs la media de esa hora (${usd(mean)})`,
         });
       }
     }
   }
-
-  // 2. Variación frente a la misma franja de ayer
-  const prev = series.find(w => w.window_end === windowEnd - WINDOWS_PER_DAY * WINDOW_HOURS * 3600);
-  if (prev && prev.revenue > 0) {
-    const pct = (value / prev.revenue - 1) * 100;
-    if (Math.abs(pct) >= ALERTS.pctVsYesterday) {
-      alerts.push({
-        rule: 'vs_yesterday', value, baseline: prev.revenue, score: pct,
-        message: `<b>${p.name}</b>: revenue ${usd(value)} en ${hhmm(windowEnd)} — ${pct > 0 ? '+' : ''}${pct.toFixed(0)}% frente a la misma franja de ayer (${usd(prev.revenue)})`,
-      });
-    }
-  }
-  return alerts;
+  return out;
 }
 
-/** Guarda las alertas nuevas y envía las que aún no se han notificado */
-export async function processAlerts(p: TrackedProtocol, windowEnd: number): Promise<number> {
-  const insert = db.prepare(`INSERT OR IGNORE INTO alerts (protocol, window_end, rule, value, baseline, score, message, created_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-  for (const a of evaluate(p, windowEnd)) {
-    insert.run(p.id, windowEnd, a.rule, a.value, a.baseline, a.score, a.message, now());
+export async function processAlerts(parents: ParentToday[], nowTs: number, hoursElapsed: number) {
+  const ins = db.prepare('INSERT OR IGNORE INTO alerts (id, parent, rule, value, baseline, score, message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
+  let created = 0;
+  for (const a of evaluate(parents, nowTs, hoursElapsed)) {
+    const r = ins.run(a.id, a.parent, a.rule, a.value, a.baseline, a.score, a.message, now());
+    if (Number(r.changes) > 0) created++;
   }
-  // Solo se notifican alertas recientes, para no inundar Telegram al activarlo o tras un backfill
-  const pending = db.prepare('SELECT rule, message FROM alerts WHERE protocol = ? AND window_end = ? AND notified = 0 AND window_end > ?')
-    .all(p.id, windowEnd, now() - 86400) as { rule: string; message: string }[];
+  const pending = db.prepare('SELECT id, message FROM alerts WHERE notified = 0 AND created_at > ?').all(now() - 6 * HOUR) as { id: string; message: string }[];
   for (const a of pending) {
     try {
-      const sent = await notify(a.message);
-      if (sent) db.prepare('UPDATE alerts SET notified = 1 WHERE protocol = ? AND window_end = ? AND rule = ?').run(p.id, windowEnd, a.rule);
-    } catch (e) {
-      console.error(`[alerta] no se pudo enviar: ${(e as Error).message}`);
-    }
+      if (await notify(a.message)) db.prepare('UPDATE alerts SET notified = 1 WHERE id = ?').run(a.id);
+    } catch (e) { console.error(`[alerta] no se pudo enviar: ${(e as Error).message}`); }
   }
-  return pending.length;
+  return created;
 }

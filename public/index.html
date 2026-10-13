@@ -3,260 +3,297 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Revenue Dashboard</title>
+<title>Revenue de Hoy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
+  /* Layout: barra del día → resumen → alertas → tabla Top 100 con filas desplegables (hijos + gráfico por horas) */
   :root {
     color-scheme: light;
-    --bg: #f4f4f2;
-    --surface-1: #fcfcfb;
-    --border: #e4e3df;
-    --grid: #ecebe7;
-    --text-primary: #0b0b0b;
-    --text-secondary: #52514e;
-    --text-muted: #8a8984;
-    --series-1: #2a78d6;
-    --series-1-soft: #2a78d61f;
-    --good: #008300;
-    --critical: #d03b3b;
-    --warning: #b87a00;
+    --bg: #f3f5f7; --surface: #ffffff; --line: #dde3e9; --row-hover: #f6f8fa;
+    --ink: #101a24; --ink-2: #4b5a69; --ink-3: #82909d;
+    --accent: #0d6e8a; --accent-soft: #0d6e8a1a; --accent-dim: #0d6e8a4d;
+    --up: #13795b; --up-soft: #13795b1a; --down: #b73a3a; --down-soft: #b73a3a17;
+    --warn: #9a6400; --warn-soft: #e0a5262e; --muted-soft: #82909d1f;
+    --display: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
-      --bg: #111110;
-      --surface-1: #1a1a19;
-      --border: #2c2c2a;
-      --grid: #262624;
-      --text-primary: #ffffff;
-      --text-secondary: #c3c2b7;
-      --text-muted: #8f8e86;
-      --series-1: #3987e5;
-      --series-1-soft: #3987e526;
-      --good: #3fb950;
-      --critical: #e66767;
-      --warning: #e0a526;
+      --bg: #0d1318; --surface: #151d24; --line: #26313b; --row-hover: #1a242d;
+      --ink: #eef3f7; --ink-2: #a9b6c2; --ink-3: #6f7e8b;
+      --accent: #4bb2d0; --accent-soft: #4bb2d021; --accent-dim: #4bb2d059;
+      --up: #4cc596; --up-soft: #4cc5961f; --down: #ef7a7a; --down-soft: #ef7a7a1c;
+      --warn: #e9b44c; --warn-soft: #e9b44c24; --muted-soft: #6f7e8b29;
     }
   }
   :root[data-theme="dark"] {
     color-scheme: dark;
-    --bg: #111110; --surface-1: #1a1a19; --border: #2c2c2a; --grid: #262624;
-    --text-primary: #ffffff; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
-    --series-1: #3987e5; --series-1-soft: #3987e526;
-    --good: #3fb950; --critical: #e66767; --warning: #e0a526;
+    --bg: #0d1318; --surface: #151d24; --line: #26313b; --row-hover: #1a242d;
+    --ink: #eef3f7; --ink-2: #a9b6c2; --ink-3: #6f7e8b;
+    --accent: #4bb2d0; --accent-soft: #4bb2d021; --accent-dim: #4bb2d059;
+    --up: #4cc596; --up-soft: #4cc5961f; --down: #ef7a7a; --down-soft: #ef7a7a1c;
+    --warn: #e9b44c; --warn-soft: #e9b44c24; --muted-soft: #6f7e8b29;
   }
-
   * { box-sizing: border-box; }
-  body {
-    margin: 0; background: var(--bg); color: var(--text-primary);
-    font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    font-variant-numeric: tabular-nums;
-  }
-  main { max-width: 1240px; margin: 0 auto; padding: 24px 16px 48px; }
-  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 20px; }
-  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-  h2 { font-size: 15px; margin: 32px 0 12px; color: var(--text-secondary); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-  .meta { color: var(--text-secondary); font-size: 13px; }
-  .meta b { color: var(--text-primary); font-weight: 600; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14.5px/1.5 var(--display); font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 56px; display: grid; gap: 24px; }
+  .wrap > * { min-width: 0; }
+  header { display: grid; gap: 12px; }
+  .top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px 24px; }
+  h1 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; }
+  h1 small { display: block; font-size: 12.5px; font-weight: 700; color: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 2px; }
+  .status { font: 12.5px/1.5 var(--mono); color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .status b { color: var(--ink); font-weight: 500; }
+  .daybar { position: relative; height: 8px; background: var(--muted-soft); border-radius: 99px; overflow: hidden; }
+  .daybar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 99px; }
+  .daylabels { display: flex; justify-content: space-between; font: 11.5px var(--mono); color: var(--ink-3); }
 
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 560px), 1fr)); gap: 16px; }
-  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px 16px 12px; min-width: 0; }
-  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-  .card-title { font-weight: 650; font-size: 16px; }
-  .hero { font-size: 26px; font-weight: 650; letter-spacing: -0.02em; margin-top: 2px; }
-  .sub { color: var(--text-secondary); font-size: 12.5px; }
-  .delta { font-weight: 600; white-space: nowrap; }
-  .delta.up { color: var(--good); } .delta.down { color: var(--critical); }
-  .stats { text-align: right; font-size: 12.5px; color: var(--text-secondary); }
-  .stats div b { color: var(--text-primary); font-weight: 600; }
-  @media (max-width: 520px) {
-    .card-head { flex-direction: column; gap: 8px; }
-    .stats { text-align: left; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
-  }
-  .note { color: var(--text-muted); font-size: 12px; margin-top: 6px; }
-  .err { color: var(--critical); font-size: 12px; margin-top: 6px; word-break: break-word; }
-  .empty { color: var(--text-muted); font-size: 13px; padding: 40px 0; text-align: center; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+  .tile .k { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+  .tile .v { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin-top: 2px; }
+  .tile .s { font-size: 12.5px; color: var(--ink-3); }
 
-  .chart { position: relative; margin-top: 10px; }
-  .chart svg { display: block; width: 100%; height: 170px; overflow: visible; }
-  .tip {
-    position: absolute; pointer-events: none; background: var(--text-primary); color: var(--surface-1);
-    padding: 6px 8px; border-radius: 6px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -100%);
-    opacity: 0; transition: opacity .08s;
-  }
+  h2 { margin: 0 0 10px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); letter-spacing: .08em; text-transform: uppercase; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  h2 span { font: 12px var(--mono); text-transform: none; letter-spacing: 0; color: var(--ink-3); font-weight: 400; }
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
 
-  table { width: 100%; border-collapse: collapse; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-  th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
-  th { font-size: 12px; color: var(--text-secondary); font-weight: 600; background: var(--surface-1); }
-  th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; }
-  tr:last-child td { border-bottom: 0; }
-  .table-wrap { overflow-x: auto; border-radius: 12px; }
-  .tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; background: var(--series-1-soft); color: var(--text-primary); margin-left: 6px; }
-  .muted { color: var(--text-muted); }
-
-  .alerts { list-style: none; margin: 0; padding: 0; background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; }
-  .alerts li { padding: 10px 14px; border-bottom: 1px solid var(--grid); display: flex; gap: 10px; align-items: baseline; }
+  .alerts { list-style: none; margin: 0; padding: 0; }
+  .alerts li { display: grid; grid-template-columns: 1fr auto; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); align-items: baseline; }
   .alerts li:last-child { border-bottom: 0; }
-  .alerts .when { color: var(--text-muted); font-size: 12px; white-space: nowrap; }
-  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-secondary); margin-top: 4px; flex-wrap: wrap; }
+  .alerts .when { font: 12px var(--mono); color: var(--ink-3); white-space: nowrap; }
+  .empty { padding: 16px; color: var(--ink-3); font-size: 14px; }
+
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .chipbtn { font: 600 12.5px var(--display); border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); padding: 6px 11px; border-radius: 99px; cursor: pointer; }
+  .chipbtn[aria-pressed="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .controls input { font: 14px var(--display); padding: 6px 11px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); min-width: 0; flex: 1 1 180px; max-width: 280px; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 860px; }
+  th, td { padding: 9px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  th { font-size: 11.5px; font-weight: 700; color: var(--ink-3); letter-spacing: .05em; text-transform: uppercase; position: sticky; top: 0; background: var(--surface); }
+  th button { all: unset; cursor: pointer; }
+  th button:focus-visible { outline: 2px solid var(--accent); }
+  th:nth-child(-n+3), td:nth-child(-n+3) { text-align: left; }
+  td { font: 13.5px var(--mono); }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: var(--row-hover); }
+  td.rank { color: var(--ink-3); width: 1%; }
+  td.name { font: 700 14px var(--display); }
+  td.name small { display: block; font: 500 12px var(--display); color: var(--ink-3); }
+  .muted { color: var(--ink-3); }
+  .badge { font: 600 11px/1 var(--display); padding: 4px 8px; border-radius: 99px; display: inline-flex; gap: 5px; align-items: center; }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .b-live { background: var(--up-soft); color: var(--up); }
+  .b-partial { background: var(--accent-soft); color: var(--accent); }
+  .b-estimate { background: var(--warn-soft); color: var(--warn); }
+  .b-daily { background: var(--muted-soft); color: var(--ink-3); }
+  .chip { font: 500 11.5px/1 var(--mono); padding: 4px 7px; border-radius: 4px; }
+  .chip.up { background: var(--up-soft); color: var(--up); }
+  .chip.down { background: var(--down-soft); color: var(--down); }
+  .bar { display: inline-block; width: 46px; height: 5px; background: var(--muted-soft); border-radius: 9px; vertical-align: middle; margin-left: 6px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  tr.detail td { background: var(--bg); white-space: normal; text-align: left; font-family: var(--display); padding: 14px 16px; }
+  .detail-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 760px) { .detail-grid { grid-template-columns: minmax(0, 1fr); } }
+  .kids { width: 100%; min-width: 0; border-collapse: collapse; }
+  .kids td, .kids th { padding: 5px 8px; font-size: 12.5px; border-bottom: 1px solid var(--line); position: static; background: none; }
+  .kids td:first-child, .kids th:first-child { text-align: left; }
+  .kids td.note { white-space: normal; color: var(--ink-3); font-family: var(--display); text-align: left; max-width: 340px; }
+  .chart svg { display: block; width: 100%; height: 160px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); margin-top: 4px; flex-wrap: wrap; }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  footer { font-size: 12.5px; color: var(--ink-3); display: grid; gap: 4px; max-width: 90ch; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body>
-<main>
+<main class="wrap">
   <header>
-    <div>
-      <h1>Revenue de protocolos</h1>
-      <div class="meta">Ventanas de 8h (00:00 · 08:00 · 16:00 UTC) para los protocolos seguidos · ranking diario de DefiLlama</div>
+    <div class="top">
+      <h1><small>Top 100 DefiLlama · día UTC en curso</small><span id="title">Revenue de hoy</span></h1>
+      <div class="status" id="status">Cargando…</div>
     </div>
-    <div class="meta" id="status">Cargando…</div>
+    <div class="daybar" aria-hidden="true"><i id="dayfill" style="width:0"></i></div>
+    <div class="daylabels"><span>00:00 UTC</span><span id="daynow"></span><span>24:00 UTC</span></div>
   </header>
 
-  <h2>Seguimiento cada 8h</h2>
-  <div class="grid" id="cards"></div>
+  <section class="tiles" id="tiles"></section>
 
-  <h2>Alertas recientes</h2>
-  <ul class="alerts" id="alerts"></ul>
+  <section>
+    <h2>Alertas <span id="alerts-meta"></span></h2>
+    <div class="panel"><ul class="alerts" id="alerts"><li class="empty">Sin alertas todavía.</li></ul></div>
+  </section>
 
-  <h2>Top 10 por revenue · DefiLlama (último día completo)</h2>
-  <div class="table-wrap"><table id="ranking"></table></div>
+  <section>
+    <h2>Protocolos <span>pulsa una fila para ver cómo se mide y el gráfico por horas</span></h2>
+    <div class="controls" role="group" aria-label="Filtrar por método">
+      <button class="chipbtn" data-f="all" aria-pressed="true">Todos</button>
+      <button class="chipbtn" data-f="live" aria-pressed="false">En vivo</button>
+      <button class="chipbtn" data-f="partial" aria-pressed="false">Parcial</button>
+      <button class="chipbtn" data-f="estimate" aria-pressed="false">Estimado</button>
+      <button class="chipbtn" data-f="daily" aria-pressed="false">Solo diario</button>
+      <input id="q" type="search" placeholder="Buscar protocolo" aria-label="Buscar protocolo">
+    </div>
+    <div class="panel table-wrap">
+      <table>
+        <thead><tr>
+          <th>#</th><th>Protocolo</th><th>Medición</th>
+          <th><button data-sort="today">Hoy hasta ahora</button></th>
+          <th><button data-sort="pace24h">Ritmo 24h</button></th>
+          <th><button data-sort="vsYesterday">vs ayer misma hora</button></th>
+          <th><button data-sort="yesterday">Ayer (DefiLlama)</button></th>
+          <th><button data-sort="coverage">Cobertura</button></th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="8" class="empty">Esperando la primera recogida. Ejecuta <code>npm run collect</code>.</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <div><b>En vivo</b>: medido hora a hora con el adapter de DefiLlama, Helius (Solana) o Hypurrscan, y calibrado contra el dato de ayer de DefiLlama. <b>Estimado</b>: protocolos cuyo revenue es un devengo (emisores de stablecoins, ETFs); se reparte su dato diario por horas. <b>Solo diario</b>: no se puede medir en vivo todavía (usa Dune, una API de pago o no cuadra); se muestra solo su dato de ayer.</div>
+    <div id="footmeta"></div>
+  </footer>
 </main>
 
 <script>
-const fmtUsd = v => v == null || isNaN(v) ? '—'
-  : Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(2)}B`
-  : Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(2)}M`
-  : Math.abs(v) >= 1e3 ? `$${(v / 1e3).toFixed(1)}K`
-  : `$${v.toFixed(0)}`;
-const fmtPct = v => v == null || isNaN(v) ? '—' : `${v > 0 ? '▲ +' : v < 0 ? '▼ ' : ''}${v.toFixed(1)}%`;
-const pctClass = v => v > 0 ? 'delta up' : v < 0 ? 'delta down' : 'delta';
-const dtf = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
-const hm = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
-const when = ts => dtf.format(new Date(ts * 1000));
-const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const usd = v => v == null || isNaN(v) ? '—' : Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(2)}B` : Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v)}`;
+const pct = v => { if (v == null || isNaN(v)) return '—'; const n = Math.round(v * 100); return `${n > 0 ? '+' : ''}${n === 0 ? 0 : n}%`; };
+const hhmm = ts => new Date(ts * 1000).toISOString().slice(11, 16);
+const madrid = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
+const LABEL = { live: 'En vivo', partial: 'Parcial', estimate: 'Estimado', daily: 'Solo diario' };
+const CHILD_LABEL = { live: 'en vivo', estimate: 'estimado', daily_only: 'solo diario', needs_key: 'necesita clave', mismatch: 'no cuadra', error: 'error', pending: 'sin calibrar', skip: 'incluido' };
+const METHOD = { adapter: 'Adapter DefiLlama', solana: 'Helius (Solana)', hypurrscan: 'Hypurrscan', accrual: 'Devengo', daily: '—', skip: '—' };
 
-function barChart(container, windows, alertEnds, windowSeconds) {
-  const W = Math.max(280, Math.round(container.clientWidth || 560)), H = 170, padL = 44, padB = 20, padT = 14;
-  if (!windows.length) { container.innerHTML = '<div class="empty">Sin ventanas todavía</div>'; return; }
-  const max = Math.max(...windows.map(w => w.revenue)) * 1.1 || 1;
-  const mean = windows.reduce((a, w) => a + w.revenue, 0) / windows.length;
-  const n = windows.length, slot = (W - padL) / n, bw = Math.max(2, slot - 2);
-  const y = v => padT + (H - padT - padB) * (1 - v / max);
-  const ticks = [0, max / 2, max].map(v => `
-    <line x1="${padL}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)" />
-    <text x="${padL - 6}" y="${y(v) + 4}" text-anchor="end" font-size="10.5" fill="var(--text-muted)">${fmtUsd(v)}</text>`).join('');
-  const bars = windows.map((w, i) => {
-    const x = padL + i * slot + 1, top = y(w.revenue), h = Math.max(1, H - padB - top);
-    const flagged = alertEnds.has(w.window_end);
-    return `<g data-i="${i}">
-      <rect x="${padL + i * slot}" y="${padT}" width="${slot}" height="${H - padT - padB}" fill="transparent" />
-      <path d="M${x},${H - padB} V${top + Math.min(3, h)} q0,-3 3,-3 h${bw - 6} q3,0 3,3 V${H - padB} Z" fill="var(--series-1)" opacity="${i === n - 1 ? 1 : .78}" />
-      ${flagged ? `<circle cx="${x + bw / 2}" cy="${top - 7}" r="4" fill="var(--warning)" stroke="var(--surface-1)" stroke-width="2" />` : ''}
-    </g>`;
-  }).join('');
-  const days = windows.filter(w => w.window_end % 86400 === 0).map(w => {
-    const i = windows.indexOf(w);
-    const d = new Date((w.window_end - 1) * 1000);
-    return `<text x="${padL + i * slot + slot / 2}" y="${H - 5}" text-anchor="middle" font-size="10.5" fill="var(--text-muted)">${d.getUTCDate()}/${d.getUTCMonth() + 1}</text>`;
-  }).filter((_, i, a) => a.length <= Math.floor(W / 70) || i % Math.ceil(a.length / Math.floor(W / 70)) === 0).join('');
-  container.innerHTML = `
-    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Revenue por ventana de 8h">
-      ${ticks}
-      <line x1="${padL}" x2="${W}" y1="${y(mean)}" y2="${y(mean)}" stroke="var(--text-secondary)" stroke-dasharray="4 4" />
-      ${bars}${days}
-    </svg><div class="tip"></div>`;
-  const tip = container.querySelector('.tip'), svg = container.querySelector('svg');
-  svg.querySelectorAll('g[data-i]').forEach(g => {
-    g.addEventListener('mouseenter', () => {
-      const w = windows[+g.dataset.i];
-      const r = svg.getBoundingClientRect(), cr = container.getBoundingClientRect();
-      const x = (padL + (+g.dataset.i + .5) * slot) / W * r.width;
-      tip.innerHTML = `<b>${fmtUsd(w.revenue)}</b> · ${when(w.window_end - windowSeconds)} → ${hm.format(new Date(w.window_end * 1000))}${alertEnds.has(w.window_end) ? ' · ⚠ alerta' : ''}`;
-      tip.style.left = `${Math.min(Math.max(x, 120), cr.width - 120)}px`;
-      tip.style.top = `${y(w.revenue) / H * r.height - 10}px`;
-      tip.style.opacity = 1;
-    });
-    g.addEventListener('mouseleave', () => { tip.style.opacity = 0; });
+let data = null, filter = 'all', sortKey = 'rank', sortDir = 1, open = new Set();
+try { filter = localStorage.getItem('rd-filter') || 'all'; } catch {}
+
+function chip(v) { if (v == null) return '<span class="muted">—</span>'; const n = Math.round(v * 100); return `<span class="chip ${Math.abs(v) >= 0.15 ? (v > 0 ? 'up' : 'down') : ''}">${n > 0 ? '▲ ' : n < 0 ? '▼ ' : ''}${pct(v)}</span>`; }
+
+function renderHeader() {
+  const s = data.summary;
+  $('title').textContent = `Revenue de hoy · ${new Date(s.now * 1000).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', timeZone: 'UTC' })}`;
+  $('dayfill').style.width = `${(s.fraction * 100).toFixed(1)}%`;
+  $('daynow').textContent = `datos hasta las ${hhmm(s.asOf)} UTC · ${(s.fraction * 100).toFixed(0)}% del día`;
+  $('status').innerHTML = `<span>Última recogida <b>${data.lastRun ? madrid.format(new Date(data.lastRun * 1000)) : '—'}</b></span>` +
+    `<span>Helius 30d <b>${Math.round(data.heliusCredits30d).toLocaleString('es-ES')}</b> créditos</span>`;
+  const live = data.parents.filter(p => p.status === 'live' || p.status === 'partial');
+  const liveToday = live.reduce((a, p) => a + p.todayLive, 0);
+  const est = data.parents.reduce((a, p) => a + p.todayEstimate, 0);
+  const ySame = live.reduce((a, p) => a + (p.yesterdaySameTime ? p.yesterdaySameTime - p.todayEstimate : 0), 0);
+  $('tiles').innerHTML = `
+    <div class="tile"><div class="k">Medido en vivo hoy</div><div class="v">${usd(liveToday)}</div><div class="s">${live.length} protocolos · ${ySame > 0 ? `${pct(liveToday / ySame - 1)} vs ayer a esta hora` : 'sin referencia de ayer aún'}</div></div>
+    <div class="tile"><div class="k">Estimado (devengo)</div><div class="v">${usd(est)}</div><div class="s">${s.counts.estimate} protocolos: stablecoins, ETFs…</div></div>
+    <div class="tile"><div class="k">Cobertura del Top ${data.parents.length}</div><div class="v">${s.counts.live + s.counts.partial + s.counts.estimate}<span style="font-size:15px;color:var(--ink-3)"> / ${data.parents.length}</span></div><div class="s">${s.counts.live} en vivo · ${s.counts.partial} parcial · ${s.counts.estimate} estimado · ${s.counts.daily} solo diario</div></div>
+    <div class="tile"><div class="k">Ayer, Top ${data.parents.length} (DefiLlama)</div><div class="v">${usd(s.totalYesterday)}</div><div class="s">último día completo</div></div>`;
+  $('footmeta').textContent = data.recentErrors?.length ? `Errores en las últimas 6h: ${data.recentErrors.reduce((a, e) => a + e.n, 0)} (se reintentan hasta 3 veces por hora).` : '';
+}
+
+function renderAlerts() {
+  const list = data.alerts || [];
+  $('alerts-meta').textContent = list.length ? `${list.length} recientes` : '';
+  $('alerts').innerHTML = list.length
+    ? list.slice(0, 10).map(a => `<li><span>${a.message.replace(/<(?!\/?b>)[^>]*>/g, '')}</span><span class="when">${madrid.format(new Date(a.created_at * 1000))}</span></li>`).join('')
+    : '<li class="empty">Sin alertas hoy. Saltan si un protocolo va ±40% frente a ayer a la misma hora, o una hora dobla la media de esa hora.</li>';
+}
+
+function rowsHtml() {
+  const q = $('q').value.trim().toLowerCase();
+  let list = data.parents.filter(p => (filter === 'all' || p.status === filter) && (!q || p.name.toLowerCase().includes(q)));
+  list = [...list].sort((a, b) => {
+    const va = a[sortKey] ?? -Infinity, vb = b[sortKey] ?? -Infinity;
+    return sortKey === 'rank' ? (a.rank - b.rank) : (vb - va) * sortDir;
   });
+  if (!list.length) return '<tr><td colspan="8" class="empty">Ningún protocolo con este filtro.</td></tr>';
+  return list.map(p => {
+    const showToday = p.status !== 'daily';
+    const main = `<tr class="row" data-p="${esc(p.parent)}" tabindex="0" aria-expanded="${open.has(p.parent)}">
+      <td class="rank">${p.rank}</td>
+      <td class="name">${esc(p.name)}<small>${esc(p.category || '')}</small></td>
+      <td><span class="badge b-${p.status}">${LABEL[p.status]}</span></td>
+      <td>${showToday ? `<b>${usd(p.today)}</b>` : '<span class="muted">—</span>'}</td>
+      <td>${showToday ? usd(p.pace24h) : '<span class="muted">—</span>'}</td>
+      <td>${chip(p.vsYesterday)}</td>
+      <td>${usd(p.yesterday)}</td>
+      <td>${(p.coverage * 100).toFixed(0)}%<span class="bar"><i style="width:${Math.min(100, p.coverage * 100)}%"></i></span></td>
+    </tr>`;
+    if (!open.has(p.parent)) return main;
+    const kids = p.children.map(c => `<tr><td>${esc(c.name)}</td><td>${METHOD[c.method] || esc(c.method)}</td><td>${CHILD_LABEL[c.status] || esc(c.status)}</td><td>${c.ratio ? c.ratio.toFixed(2) : '—'}</td><td>${c.today == null ? '—' : usd(c.today)}</td><td>${usd(c.yesterday)}</td><td class="note">${esc(c.note || '')}</td></tr>`).join('');
+    return main + `<tr class="detail"><td colspan="8"><div class="detail-grid">
+      <div style="overflow-x:auto"><table class="kids"><thead><tr><th>Adapter</th><th>Método</th><th>Estado</th><th>Ratio ayer</th><th>Hoy</th><th>Ayer</th><th>Nota</th></tr></thead><tbody>${kids}</tbody></table></div>
+      <div class="chart" data-chart="${esc(p.parent)}"><div class="empty">Cargando horas…</div></div>
+    </div></td></tr>`;
+  }).join('');
 }
 
-function renderCards(data) {
-  const cards = document.getElementById('cards');
-  cards.innerHTML = '';
-  for (const p of [...data.tracked].sort((a, b) => Number(b.enabled) - Number(a.enabled))) {
-    const ws = p.windows, last = ws.at(-1);
-    const hist = ws.slice(0, -1);
-    const avg = hist.length ? hist.reduce((a, w) => a + w.revenue, 0) / hist.length : null;
-    const vsAvg = last && avg ? (last.revenue / avg - 1) * 100 : null;
-    const sameYesterday = last && ws.find(w => w.window_end === last.window_end - 86400);
-    const vsYesterday = sameYesterday && sameYesterday.revenue > 0 ? (last.revenue / sameYesterday.revenue - 1) * 100 : null;
-    const ratio = p.calibration.length ? p.calibration.reduce((a, c) => a + c.ours, 0) / p.calibration.reduce((a, c) => a + c.llama, 0) : null;
-    const alertEnds = new Set(data.alerts.filter(a => a.protocol === p.id).map(a => a.window_end));
+function renderRows() {
+  $('rows').innerHTML = rowsHtml();
+  document.querySelectorAll('[data-chart]').forEach(el => loadChart(el));
+}
 
-    const el = document.createElement('section');
-    el.className = 'card';
-    el.innerHTML = `
-      <div class="card-head">
-        <div>
-          <div class="card-title">${esc(p.name)}</div>
-          <div class="hero">${last ? fmtUsd(last.revenue) : '—'}</div>
-          <div class="sub">${!p.enabled ? 'desactivado' : last ? `última ventana · cierra ${when(last.window_end)}` : 'sin datos aún'}</div>
-        </div>
-        <div class="stats">
-          <div>vs media 14d <span class="${pctClass(vsAvg)}">${fmtPct(vsAvg)}</span></div>
-          <div>vs misma franja ayer <span class="${pctClass(vsYesterday)}">${fmtPct(vsYesterday)}</span></div>
-          <div>media 8h <b>${fmtUsd(avg)}</b></div>
-          <div title="Suma de nuestras 3 ventanas de un día ÷ dato diario de DefiLlama">cobertura vs DefiLlama <b>${ratio ? (ratio * 100).toFixed(0) + '%' : '—'}</b></div>
-        </div>
-      </div>
-      <div class="chart"></div>
-      <div class="legend"><span><i style="background:var(--series-1)"></i>Revenue por ventana de 8h</span><span><i style="background:none;border-top:1.5px dashed var(--text-secondary);height:0;border-radius:0"></i>Media del periodo</span>${alertEnds.size ? '<span><i style="background:var(--warning);border-radius:50%"></i>Ventana con alerta</span>' : ''}</div>
-      <div class="note">${esc(p.coverageNote)}</div>
-      ${p.lastError ? `<div class="err">⚠ Último error (${esc(p.lastError.source)}): ${esc(p.lastError.error).slice(0, 220)}</div>` : ''}`;
-    cards.appendChild(el);
-    barChart(el.querySelector('.chart'), ws, alertEnds, data.windowSeconds);
+async function loadChart(el) {
+  const parent = el.dataset.chart;
+  let hours = [];
+  try { hours = await (await fetch(`/api/hours?parent=${encodeURIComponent(parent)}`)).json(); } catch {}
+  if (!hours.length) { el.innerHTML = '<div class="empty">Sin horas medidas (solo los protocolos en vivo tienen gráfico).</div>'; return; }
+  const day0 = Math.floor(data.summary.now / 86400) * 86400;
+  const today = new Map(hours.filter(h => h.hour_end > day0).map(h => [Math.round((h.hour_end - day0) / 3600), h.revenue]));
+  const yest = new Map(hours.filter(h => h.hour_end <= day0).map(h => [Math.round((h.hour_end - day0 + 86400) / 3600), h.revenue]));
+  const W = Math.max(280, el.clientWidth || 480), H = 160, padL = 46, padB = 20, padT = 8;
+  const max = Math.max(1, ...hours.map(h => h.revenue)) * 1.1;
+  const slot = (W - padL) / 24, bw = Math.max(3, slot - 3);
+  const y = v => padT + (H - padT - padB) * (1 - v / max);
+  let svg = [0, max / 2, max].map(v => `<line x1="${padL}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${padL - 6}" y="${y(v) + 4}" text-anchor="end" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">${usd(v)}</text>`).join('');
+  const pts = [];
+  for (let h = 1; h <= 24; h++) {
+    const x = padL + (h - 1) * slot;
+    if (yest.has(h)) pts.push(`${(x + slot / 2).toFixed(1)},${y(yest.get(h)).toFixed(1)}`);
+    if (today.has(h)) {
+      const top = y(today.get(h)), r = Math.min(3, bw / 2, H - padB - top);
+      svg += `<path d="M${x + 1.5},${H - padB} V${top + r} q0,-${r} ${r},-${r} h${bw - 2 * r} q${r},0 ${r},${r} V${H - padB} Z" fill="var(--accent)"><title>${String(h - 1).padStart(2, '0')}–${String(h).padStart(2, '0')} UTC: ${usd(today.get(h))}${yest.has(h) ? ` · ayer ${usd(yest.get(h))}` : ''}</title></path>`;
+    }
+    if (h % 6 === 0) svg += `<text x="${x + slot / 2}" y="${H - 5}" text-anchor="middle" font-size="10" font-family="var(--mono)" fill="var(--ink-3)">${String(h).padStart(2, '0')}h</text>`;
   }
+  if (pts.length > 1) svg += `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Revenue por hora hoy frente a ayer">${svg}</svg>
+    <div class="legend"><span><i style="background:var(--accent)"></i>Hoy, por hora (UTC)</span><span><i style="height:0;border-top:1.5px dashed var(--ink-2);border-radius:0"></i>Ayer</span></div>`;
 }
 
-function renderAlerts(data) {
-  const ul = document.getElementById('alerts');
-  ul.innerHTML = data.alerts.length
-    ? data.alerts.slice(0, 15).map(a => `<li><span class="when">${when(a.window_end)}</span><span>${a.message}</span></li>`).join('')
-    : '<li class="muted">Ninguna alerta todavía. Se evalúan cuando hay al menos 3 días de histórico.</li>';
-}
-
-function renderRanking(data) {
-  const tracked = new Map(data.tracked.map(t => [t.name.toLowerCase(), t]));
-  const rows = data.ranking.map(r => `<tr>
-      <td class="muted">${r.rank}</td>
-      <td><b>${esc(r.name)}</b>${tracked.has(r.name.toLowerCase()) ? '<span class="tag">8h</span>' : ''}</td>
-      <td class="muted">${esc(r.category ?? '')}</td>
-      <td>${fmtUsd(r.rev24h)}</td>
-      <td><span class="${pctClass(r.change1d)}">${fmtPct(r.change1d)}</span></td>
-      <td>${fmtUsd(r.rev7d)}</td>
-      <td>${fmtUsd(r.rev30d)}</td>
-    </tr>`).join('');
-  document.getElementById('ranking').innerHTML = `
-    <thead><tr><th>#</th><th>Protocolo</th><th>Categoría</th><th>Revenue 24h</th><th>vs día anterior</th><th>7d</th><th>30d</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="7" class="muted">Sin datos todavía</td></tr>'}</tbody>`;
-}
+document.querySelectorAll('.chipbtn').forEach(b => {
+  b.setAttribute('aria-pressed', String(b.dataset.f === filter));
+  b.addEventListener('click', () => {
+    filter = b.dataset.f;
+    try { localStorage.setItem('rd-filter', filter); } catch {}
+    document.querySelectorAll('.chipbtn').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    data && renderRows();
+  });
+});
+$('q').addEventListener('input', () => data && renderRows());
+document.querySelectorAll('th button').forEach(b => b.addEventListener('click', () => {
+  const k = b.dataset.sort;
+  sortDir = sortKey === k ? -sortDir : 1; sortKey = k;
+  data && renderRows();
+}));
+$('rows').addEventListener('click', e => {
+  const tr = e.target.closest('tr.row'); if (!tr) return;
+  const p = tr.dataset.p; open.has(p) ? open.delete(p) : open.add(p); renderRows();
+});
+$('rows').addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('tr.row')) { e.preventDefault(); e.target.click(); } });
 
 async function load() {
   try {
-    const data = await (await fetch('/api/data', { cache: 'no-store' })).json();
-    const next = Math.ceil(Date.now() / 1000 / data.windowSeconds) * data.windowSeconds;
-    document.getElementById('status').innerHTML =
-      `Última recogida <b>${data.lastRun ? when(data.lastRun) : '—'}</b> · próxima ventana cierra <b>${when(next)}</b>` +
-      (data.heliusCredits30d ? ` · Helius <b>${Math.round(data.heliusCredits30d).toLocaleString('es-ES')}</b> créditos (30d)` : '');
-    lastData = data;
-    renderCards(data); renderAlerts(data); renderRanking(data);
-  } catch (e) {
-    document.getElementById('status').textContent = 'No se pudieron cargar los datos';
-  }
+    data = await (await fetch('/api/today', { cache: 'no-store' })).json();
+    renderHeader(); renderAlerts();
+    if (data.parents.length) renderRows();
+  } catch { $('status').textContent = 'No se pudieron cargar los datos'; }
 }
-let lastData = null;
 load();
 setInterval(load, 5 * 60_000);
-let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => lastData && renderCards(lastData), 150); });
 </script>
 </body>
 </html>

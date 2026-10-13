@@ -1,100 +1,78 @@
 /**
- * Ejecución programada (cada hora; las ventanas de 8h se recogen al cerrar + su retraso):
- *  1. Ranking Top N de DefiLlama (dato diario)
- *  2. Revenue diario de DefiLlama de los protocolos seguidos (calibración)
- *  3. Revenue propio de las ventanas de 8h que falten
- *  4. Alertas sobre las ventanas nuevas
+ * Recogida horaria (systemd timer, minuto 12 de cada hora):
+ *  1. Una vez al día: actualiza el universo Top N y calibra los adapters nuevos
+ *  2. Snapshot de Hypurrscan
+ *  3. Mide las horas cerradas de hoy que falten de cada hijo en vivo (las más recientes primero)
+ *  4. Alertas sobre la vista de hoy
  *
- * Uso: npm run collect               → rellena las últimas 3 ventanas (1 día) que falten
- *      npm run collect -- --backfill-days 14
+ *   npm run collect
+ *   npm run collect -- --only axiom     (solo hijos cuyo padre o módulo contenga el texto)
  */
-import { TRACKED, TrackedProtocol, WINDOWS_PER_DAY, WINDOW_HOURS, WINDOW_SECONDS, type Source } from './config.js';
-import { failCount, hasWindow, logHeliusUsage, logRun, now, saveWindow } from './db.js';
+import { HOUR, HOUR_LAG_MIN, MAX_JOBS_PER_RUN, hourEnd, startOfDayUTC } from './config.js';
+import { db, failCount, hasHour, logRun, now, saveHour, universe } from './db.js';
 import { processAlerts, usd } from './alerts.js';
-import { adapterWindowRevenue } from './collectors/adapter.js';
-import { collectLlamaDaily, collectLlamaRanking } from './collectors/defillama.js';
-import { hyperliquidWindowRevenue, snapshotHyperliquid } from './collectors/hyperliquid.js';
-import { solanaWindowRevenue } from './collectors/solana.js';
-import { iso, recentWindowEnds } from './windows.js';
+import { calibrate } from './calibrate.js';
+import { discover } from './discover.js';
+import { measurePairs, mkey, type Target } from './measure.js';
+import { snapshotHypurrscan } from './methods/hypurrscan.js';
+import { computeToday } from './today.js';
 
-const argDays = process.argv.indexOf('--backfill-days');
-const backfillDays = argDays > 0 ? Number(process.argv[argDays + 1]) : 1;
 const MAX_RETRIES = 3;
-const only = process.argv.indexOf('--only') > 0 ? process.argv[process.argv.indexOf('--only') + 1] : null;
-
-async function sourceRevenue(p: TrackedProtocol, s: Source, end: number): Promise<number> {
-  switch (s.kind) {
-    case 'hypurrscan':
-      return hyperliquidWindowRevenue(end, s.revenueRatio);
-    case 'adapter':
-      return (await adapterWindowRevenue(s.path, end)).revenue;
-    case 'solana': {
-      const r = await solanaWindowRevenue(s.spec, end, WINDOW_SECONDS);
-      logHeliusUsage(p.id, s.id, end, r.transactions, r.credits);
-      console.log(`    ${r.transactions} transacciones · ${r.credits} créditos Helius · fees $${r.feesUsd.toFixed(0)} − pagos $${r.payoutsUsd.toFixed(0)}`);
-      return r.revenueUsd;
-    }
-  }
-}
-
-async function collectProtocol(p: TrackedProtocol): Promise<number[]> {
-  const ends = recentWindowEnds(now(), p.lagHours, backfillDays * WINDOWS_PER_DAY);
-  const completed: number[] = [];
-
-  for (const end of ends) {
-    let allOk = true;
-    for (const s of p.sources) {
-      if (hasWindow(p.id, s.id, end)) continue;
-      // Hypurrscan solo tiene histórico diario: no se pueden reconstruir ventanas antiguas
-      if (s.kind === 'hypurrscan' && end < now() - 86400) { allOk = false; continue; }
-      // Tras 3 fallos dejamos esa ventana (evita gastar créditos de Dune en bucle)
-      if (failCount(p.id, s.id, end) >= MAX_RETRIES) { allOk = false; continue; }
-      try {
-        const revenue = await sourceRevenue(p, s, end);
-        saveWindow(p.id, s.id, end, WINDOW_HOURS, revenue);
-        logRun(p.id, s.id, end, true);
-        console.log(`  ✓ ${p.name} · ${s.id} · ${iso(end)} → ${usd(revenue)}`);
-      } catch (e) {
-        allOk = false;
-        const msg = (e as Error).message;
-        logRun(p.id, s.id, end, false, msg);
-        console.error(`  ✗ ${p.name} · ${s.id} · ${iso(end)} → ${msg}`);
-      }
-    }
-    if (allOk) completed.push(end);
-  }
-  return completed;
-}
+const only = process.argv.indexOf('--only') > 0 ? process.argv[process.argv.indexOf('--only') + 1].toLowerCase() : '';
 
 async function main() {
-  console.log(`[${new Date().toISOString()}] recogida (${backfillDays} día/s)`);
+  const t0 = Date.now();
+  console.log(`[${new Date().toISOString()}] recogida`);
 
-  try {
-    const top = await collectLlamaRanking();
-    logRun(null, 'defillama-ranking', null, true);
-    console.log(`  ✓ ranking DefiLlama: ${top.map(t => t.name).join(', ')}`);
-  } catch (e) {
-    logRun(null, 'defillama-ranking', null, false, (e as Error).message);
-    console.error(`  ✗ ranking DefiLlama: ${(e as Error).message}`);
-  }
-  await collectLlamaDaily();
-
-  try {
-    const hl = await snapshotHyperliquid();
-    logRun('hyperliquid', 'hypurrscan-snapshot', null, true);
-    console.log(`  ✓ snapshot Hyperliquid ${iso(hl.time)}: fees acumulados ${usd(hl.totalFeesUsd)}`);
-  } catch (e) {
-    logRun('hyperliquid', 'hypurrscan-snapshot', null, false, (e as Error).message);
-    console.error(`  ✗ snapshot Hyperliquid: ${(e as Error).message}`);
+  // 1. universo diario
+  const last = db.prepare('SELECT MAX(updated_at) AS t FROM universe').get() as { t: number | null };
+  if (!last.t || now() - last.t > 20 * HOUR) {
+    try {
+      const d = await discover();
+      console.log(`  ✓ universo: ${d.parents} protocolos, ${d.children} adapters`, d.counts);
+      const c = await calibrate();
+      if (c.calibrated) console.log('  ✓ calibración de nuevos:', c.summary);
+    } catch (e) {
+      logRun(null, null, 'discover', false, String((e as Error).message));
+      console.error(`  ✗ universo: ${(e as Error).message}`);
+    }
   }
 
-  let alerts = 0;
-  for (const p of TRACKED.filter(t => t.enabled && (!only || t.id === only))) {
-    const done = await collectProtocol(p);
-    // Solo alertamos sobre ventanas del último día (no sobre el histórico de un backfill)
-    for (const end of done.filter(e => e > now() - 86400)) alerts += await processAlerts(p, end);
+  // 2. Hypurrscan
+  try { await snapshotHypurrscan(); logRun(null, null, 'snapshot', true); }
+  catch (e) { logRun(null, null, 'snapshot', false, String((e as Error).message)); console.error(`  ✗ Hypurrscan: ${(e as Error).message}`); }
+
+  // 3. horas pendientes
+  const lastHour = hourEnd(now() - HOUR_LAG_MIN * 60);
+  const day0 = startOfDayUTC(lastHour - 1);
+  const hoursToTry: number[] = [];
+  for (let he = lastHour; he > day0; he -= HOUR) hoursToTry.push(he);
+  const live = universe().filter(r => r.status === 'live' && ['adapter', 'solana', 'hypurrscan'].includes(r.method ?? '') &&
+    (!only || r.parent_name.toLowerCase().includes(only) || (r.module ?? '').toLowerCase().includes(only)));
+
+  // pares (hijo, hora) pendientes, de la hora más reciente hacia atrás, con un límite por ejecución
+  const pairs: { target: Target; from: number; to: number }[] = [];
+  for (const he of hoursToTry) {
+    for (const r of live) {
+      if (pairs.length >= MAX_JOBS_PER_RUN) break;
+      if (hasHour(r.child, he) || failCount(r.child, he) >= MAX_RETRIES) continue;
+      pairs.push({ target: { child: r.child, method: r.method!, adapter_type: r.adapter_type ?? null, module: r.module, llama_rev24h: r.llama_rev24h, skip_chains: r.skip_chains ? JSON.parse(r.skip_chains) : null }, from: he - HOUR, to: he });
+    }
   }
-  console.log(`  alertas: ${alerts}`);
+  if (pairs.length >= MAX_JOBS_PER_RUN) console.log(`  límite de ${MAX_JOBS_PER_RUN} mediciones: el resto del día se completa en la próxima ejecución`);
+
+  let saved = 0, failed = 0;
+  const m = await measurePairs(pairs);
+  for (const { target: t, from, to } of pairs) {
+    const r = m.get(mkey(t.child, from, to));
+    if (r?.ok && r.revenue !== undefined) { saveHour(t.child, to, r.revenue, t.method); logRun(t.child, to, 'hour', true); saved++; }
+    else { logRun(t.child, to, 'hour', false, r?.error ?? 'sin resultado'); failed++; }
+  }
+
+  // 4. vista de hoy y alertas
+  const view = computeToday(now());
+  const created = await processAlerts(view.parents, now(), view.summary.hoursElapsed);
+  console.log(`  ✓ ${saved} horas guardadas, ${failed} fallos · hoy ${usd(view.summary.totalToday)} · ${JSON.stringify(view.summary.counts)} · alertas nuevas: ${created} · ${Math.round((Date.now() - t0) / 1000)}s`);
 }
 
 main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
