@@ -36,6 +36,8 @@ export type SolanaWindowResult = {
   transactions: number;
   credits: number;
   solPrice: number;
+  /** transacciones leídas por dirección (sirve para detectar wallets que ya no se usan) */
+  byAddress: Record<string, number>;
 };
 
 // ---------------------------------------------------------------- Helius
@@ -219,16 +221,19 @@ export async function solanaWindowRevenue(spec: SolanaSpec, windowEnd: number, w
   const flows: TxFlows[] = [];
 
   const addresses = [...spec.feeWallets, ...(spec.payouts?.wallets ?? [])];
+  const byAddress: Record<string, number> = {};
   for (const address of addresses) {
+    const before = counter.txs;
     for await (const tx of transactionsForAddress(address, from, windowEnd, counter)) {
       const sig = tx.transaction?.signatures?.[0];
       if (!sig || seen.has(sig)) continue; // una misma transacción puede tocar varias wallets
       seen.add(sig);
       flows.push(flowsFromTransaction(tx, spec));
     }
+    byAddress[address] = counter.txs - before;
   }
 
   const solPrice = await solPriceAt(windowEnd - Math.floor(windowSeconds / 2));
   const agg = aggregateFlows(flows, spec, solPrice);
-  return { ...agg, transactions: seen.size, credits: counter.calls * 10, solPrice };
+  return { ...agg, transactions: seen.size, credits: counter.calls * 10, solPrice, byAddress };
 }
