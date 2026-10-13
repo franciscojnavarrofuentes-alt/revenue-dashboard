@@ -1,0 +1,263 @@
+<title>Radar de Revenue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: cabecera de estado → alertas → Hyperliquid 8h → tabla Top 10. Pensado para escanear, no leer. */
+  :root {
+    --bg: #f3f5f7;
+    --surface: #ffffff;
+    --line: #dde3e9;
+    --ink: #101a24;
+    --ink-2: #4b5a69;
+    --ink-3: #82909d;
+    --accent: #0d6e8a;
+    --accent-soft: #0d6e8a1a;
+    --accent-dim: #0d6e8a59;
+    --up: #13795b;
+    --up-soft: #13795b1a;
+    --down: #b73a3a;
+    --down-soft: #b73a3a17;
+    --warn: #9a6400;
+    --warn-soft: #e0a5262e;
+    --display: "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d1318; --surface: #151d24; --line: #26313b;
+      --ink: #eef3f7; --ink-2: #a9b6c2; --ink-3: #6f7e8b;
+      --accent: #4bb2d0; --accent-soft: #4bb2d021; --accent-dim: #4bb2d066;
+      --up: #4cc596; --up-soft: #4cc5961f; --down: #ef7a7a; --down-soft: #ef7a7a1c;
+      --warn: #e9b44c; --warn-soft: #e9b44c24;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1318; --surface: #151d24; --line: #26313b;
+    --ink: #eef3f7; --ink-2: #a9b6c2; --ink-3: #6f7e8b;
+    --accent: #4bb2d0; --accent-soft: #4bb2d021; --accent-dim: #4bb2d066;
+    --up: #4cc596; --up-soft: #4cc5961f; --down: #ef7a7a; --down-soft: #ef7a7a1c;
+    --warn: #e9b44c; --warn-soft: #e9b44c24;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--display); font-variant-numeric: tabular-nums; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 28px; }
+
+  header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 12px 24px; }
+  h1 { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; text-wrap: balance; }
+  h1 small { display: block; font-size: 13px; font-weight: 600; color: var(--ink-3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; }
+  .status { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 12.5px/1.4 var(--mono); color: var(--ink-2); }
+  .status b { color: var(--ink); font-weight: 500; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--up); margin-right: 6px; vertical-align: 1px; }
+  .dot.stale { background: var(--warn); }
+
+  h2 { margin: 0 0 10px; font-size: 12.5px; font-weight: 700; color: var(--ink-2); letter-spacing: 0.08em; text-transform: uppercase; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  h2 span { font: 12px var(--mono); text-transform: none; letter-spacing: 0; color: var(--ink-3); font-weight: 400; }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+
+  /* Alertas */
+  .alerts { list-style: none; margin: 0; padding: 0; }
+  .alerts li { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: baseline; padding: 11px 16px; border-bottom: 1px solid var(--line); }
+  .alerts li:last-child { border-bottom: 0; }
+  .alerts .msg { min-width: 0; }
+  .alerts .when { font: 12px var(--mono); color: var(--ink-3); white-space: nowrap; }
+  .chip { font: 500 11px/1 var(--mono); padding: 4px 7px; border-radius: 4px; white-space: nowrap; }
+  .chip.up { background: var(--up-soft); color: var(--up); }
+  .chip.down { background: var(--down-soft); color: var(--down); }
+  .chip.new { background: var(--warn-soft); color: var(--warn); }
+  .empty { padding: 18px 16px; color: var(--ink-3); font-size: 14px; }
+
+  /* Hyperliquid */
+  .hl { display: grid; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); gap: 8px 28px; padding: 18px 18px 14px; }
+  @media (max-width: 720px) { .hl { grid-template-columns: minmax(0, 1fr); } }
+  .kpi .label { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+  .kpi .big { font-size: 34px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin: 4px 0 6px; }
+  .kpi dl { margin: 12px 0 0; display: grid; grid-template-columns: auto auto; gap: 4px 14px; font-size: 13px; }
+  .kpi dt { color: var(--ink-2); }
+  .kpi dd { margin: 0; text-align: right; font-family: var(--mono); font-size: 12.5px; }
+  .chart { position: relative; min-width: 0; }
+  .chart svg { display: block; width: 100%; height: 190px; overflow: visible; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--surface); font: 12px/1.35 var(--mono); padding: 6px 8px; border-radius: 5px; white-space: nowrap; transform: translate(-50%, -100%); opacity: 0; transition: opacity .1s; }
+  .note { font-size: 12.5px; color: var(--ink-3); margin-top: 8px; max-width: 70ch; }
+
+  /* Tabla */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 640px; }
+  th, td { padding: 10px 14px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  th { font-size: 11.5px; font-weight: 700; color: var(--ink-3); letter-spacing: 0.06em; text-transform: uppercase; }
+  td { font: 13.5px var(--mono); }
+  th:nth-child(-n+2), td:nth-child(-n+2) { text-align: left; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.name { font: 700 14.5px var(--display); }
+  td.name small { display: block; font: 500 12px var(--display); color: var(--ink-3); }
+  td.rank { color: var(--ink-3); width: 1%; }
+  .spark { width: 84px; height: 24px; vertical-align: middle; }
+
+  footer { font-size: 12.5px; color: var(--ink-3); display: grid; gap: 4px; }
+  footer a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1><small>Revenue de protocolos crypto</small>Radar de Revenue</h1>
+    <div class="status" id="status"><span>Conectando con los datos…</span></div>
+  </header>
+
+  <section>
+    <h2>Alertas <span id="alerts-count"></span></h2>
+    <div class="panel"><ul class="alerts" id="alerts"><li class="empty">Las alertas aparecerán aquí cuando un protocolo se salga de su media.</li></ul></div>
+  </section>
+
+  <section>
+    <h2>Hyperliquid · revenue por ventana de 8h <span>Hypurrscan, snapshot cada 8h</span></h2>
+    <div class="panel hl">
+      <div class="kpi" id="hl-kpi"><div class="label">Última ventana</div><div class="big">—</div></div>
+      <div class="chart" id="hl-chart"><div class="empty">La primera ventana aparece tras la siguiente recogida.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Top 10 por revenue · DefiLlama <span>último día completo (UTC)</span></h2>
+    <div class="panel table-wrap"><table id="ranking"><tbody><tr><td class="empty" colspan="8">El ranking aparecerá tras la primera recogida.</td></tr></tbody></table></div>
+  </section>
+
+  <footer>
+    <div id="rules">Las alertas comparan el revenue de 24h con la media de 7 días y cada ventana de 8h de Hyperliquid con la media de las anteriores.</div>
+    <div>Fuentes: <a href="https://defillama.com/revenue" target="_blank" rel="noopener">defillama.com/revenue</a> y <a href="https://hypurrscan.io" target="_blank" rel="noopener">hypurrscan.io</a>. Una tarea programada de Claude actualiza esta página cada 8h.</div>
+  </footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const usd = v => v == null || isNaN(v) ? '—'
+  : Math.abs(v) >= 1e9 ? `$${(v / 1e9).toFixed(2)}B`
+  : Math.abs(v) >= 1e6 ? `$${(v / 1e6).toFixed(2)}M`
+  : Math.abs(v) >= 1e3 ? `$${(v / 1e3).toFixed(0)}K` : `$${Math.round(v)}`;
+const pct = v => v == null || isNaN(v) ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(0)}%`;
+const dt = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
+const hm = new Intl.DateTimeFormat('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
+const when = ts => dt.format(new Date(ts * 1000));
+const chip = (v, th = 0.4) => v == null ? '<span class="chip">—</span>'
+  : `<span class="chip ${Math.abs(v) >= th ? (v > 0 ? 'up' : 'down') : ''}">${v > 0 ? '▲' : v < 0 ? '▼' : ''} ${pct(v)}</span>`;
+
+let state = null;
+
+function renderStatus() {
+  const s = state;
+  if (!s) return;
+  const age = Date.now() / 1000 - s.updatedAt;
+  const next = s.updatedAt + 8 * 3600;
+  $('status').innerHTML = `
+    <span><i class="dot ${age > 10 * 3600 ? 'stale' : ''}"></i>Actualizado <b>${when(s.updatedAt)}</b></span>
+    <span>Próxima ≈ <b>${when(next)}</b></span>
+    <span><b>${s.runs ?? 1}</b> recogidas</span>`;
+}
+
+function renderAlerts() {
+  const list = state?.alerts ?? [];
+  $('alerts-count').textContent = list.length ? `${list.length} en total` : '';
+  if (!list.length) {
+    $('alerts').innerHTML = '<li class="empty">Sin alertas por ahora. Saltan cuando un protocolo se desvía ±40% de su media o entra en el Top 10.</li>';
+    return;
+  }
+  $('alerts').innerHTML = list.slice(0, 12).map(a => {
+    const kind = a.rule === 'nuevo_top10' ? ['new', 'Top 10'] : a.score > 0 ? ['up', pct(a.score)] : ['down', pct(a.score)];
+    const msg = String(a.message).replace(/^[^\p{L}\p{N}$]+/u, '');
+    return `<li><span class="chip ${kind[0]}">${esc(kind[1])}</span><span class="msg">${esc(msg)}</span><span class="when">${when(a.at)}</span></li>`;
+  }).join('');
+}
+
+function renderHyperliquid() {
+  const ws = state?.hlWindows ?? [];
+  const live = ws.filter(w => w.live);
+  const last = live.at(-1);
+  const prior = ws.slice(0, -1).map(w => w.revenue8h);
+  const mean = prior.length ? prior.reduce((a, b) => a + b, 0) / prior.length : null;
+  const row = state?.ranking?.find(r => r.name === 'Hyperliquid');
+  $('hl-kpi').innerHTML = `
+    <div class="label">Última ventana de 8h</div>
+    <div class="big">${last ? usd(last.revenue8h) : '—'}</div>
+    <div class="note" style="margin:0">${last ? `${when(last.end - last.span)} → ${hm.format(new Date(last.end * 1000))}` : 'Esperando la primera ventana real'}</div>
+    <dl>
+      <dt>vs media previa</dt><dd>${last && mean ? chip(last.revenue8h / mean - 1) : '—'}</dd>
+      <dt>Media por 8h</dt><dd>${usd(mean)}</dd>
+      <dt>DefiLlama 24h ÷ 3</dt><dd>${row ? usd(row.rev24h / 3) : '—'}</dd>
+    </dl>`;
+
+  const el = $('hl-chart');
+  if (!ws.length) { el.innerHTML = '<div class="empty">La primera ventana aparece tras la siguiente recogida.</div>'; return; }
+  const W = Math.max(300, Math.round(el.clientWidth || 640)), H = 190, padL = 50, padB = 22, padT = 12;
+  const max = Math.max(...ws.map(w => w.revenue8h)) * 1.12 || 1;
+  const y = v => padT + (H - padT - padB) * (1 - v / max);
+  const n = ws.length, slot = (W - padL) / Math.max(n, 6), bw = Math.max(4, Math.min(34, slot - 4));
+  const ticks = [0, max / 2, max].map(v => `<line x1="${padL}" x2="${W}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${padL - 8}" y="${y(v) + 4}" text-anchor="end" font-size="10.5" font-family="var(--mono)" fill="var(--ink-3)">${usd(v)}</text>`).join('');
+  const bars = ws.map((w, i) => {
+    const cx = padL + i * slot + slot / 2, top = y(w.revenue8h), h = Math.max(1, H - padB - top), x = cx - bw / 2, r = Math.min(4, bw / 2, h);
+    return `<g data-i="${i}"><rect x="${padL + i * slot}" y="${padT}" width="${slot}" height="${H - padT - padB}" fill="transparent"/>
+      <path d="M${x},${H - padB} V${top + r} q0,-${r} ${r},-${r} h${bw - 2 * r} q${r},0 ${r},${r} V${H - padB} Z" fill="${w.live ? 'var(--accent)' : 'var(--accent-dim)'}"/></g>`;
+  }).join('');
+  const labels = ws.map((w, i) => i % Math.ceil(n / Math.floor(W / 80)) === 0
+    ? `<text x="${padL + i * slot + slot / 2}" y="${H - 6}" text-anchor="middle" font-size="10.5" font-family="var(--mono)" fill="var(--ink-3)">${new Date(w.end * 1000).toLocaleDateString('es-ES', { day: 'numeric', month: 'numeric', timeZone: 'Europe/Madrid' })}</text>` : '').join('');
+  const meanLine = mean ? `<line x1="${padL}" x2="${W}" y1="${y(mean)}" y2="${y(mean)}" stroke="var(--ink-2)" stroke-dasharray="4 4"/>` : '';
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Revenue de Hyperliquid por ventana de 8h">${ticks}${meanLine}${bars}${labels}</svg>
+    <div class="tip"></div>
+    <div class="legend"><span><i style="background:var(--accent)"></i>Ventana real de 8h</span><span><i style="background:var(--accent-dim)"></i>Media diaria ÷ 3 (histórico)</span>${mean ? '<span><i style="height:0;border-top:1.5px dashed var(--ink-2);border-radius:0"></i>Media</span>' : ''}</div>`;
+  const tip = el.querySelector('.tip'), svg = el.querySelector('svg');
+  svg.querySelectorAll('g[data-i]').forEach(g => {
+    g.addEventListener('mouseenter', () => {
+      const w = ws[+g.dataset.i], rect = svg.getBoundingClientRect();
+      tip.innerHTML = `<b>${usd(w.revenue8h)}</b> · ${when(w.end - w.span)} → ${hm.format(new Date(w.end * 1000))}${w.live ? '' : ' · media diaria'}`;
+      tip.style.left = `${Math.min(Math.max((padL + (+g.dataset.i + .5) * slot) / W * rect.width, 130), rect.width - 130)}px`;
+      tip.style.top = `${y(w.revenue8h) / H * rect.height - 8}px`;
+      tip.style.opacity = 1;
+    });
+    g.addEventListener('mouseleave', () => { tip.style.opacity = 0; });
+  });
+}
+
+function spark(series) {
+  if (!series || series.length < 2) return '<span style="color:var(--ink-3)">—</span>';
+  const vs = series.map(p => p[1]), min = Math.min(...vs), max = Math.max(...vs), span = max - min || 1;
+  const pts = vs.map((v, i) => `${(i / (vs.length - 1) * 80 + 2).toFixed(1)},${(20 - (v - min) / span * 16 + 2).toFixed(1)}`);
+  const lx = pts.at(-1).split(',');
+  return `<svg class="spark" viewBox="0 0 84 24" aria-hidden="true"><polyline points="${pts.join(' ')}" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-linejoin="round"/><circle cx="${lx[0]}" cy="${lx[1]}" r="2.4" fill="var(--accent)"/></svg>`;
+}
+
+function renderRanking() {
+  const rows = state?.ranking ?? [];
+  if (!rows.length) return;
+  $('ranking').innerHTML = `
+    <thead><tr><th>#</th><th>Protocolo</th><th>Revenue 24h</th><th>vs media 7d</th><th>Media/día 7d</th><th>7 días</th><th>30 días</th><th>Tendencia</th></tr></thead>
+    <tbody>${rows.map(r => `<tr>
+      <td class="rank">${r.rank}</td>
+      <td class="name">${esc(r.name)}<small>${esc(r.category)}</small></td>
+      <td><b>${usd(r.rev24h)}</b></td>
+      <td>${chip(r.vs7d, state.rules?.dailyDev ?? 0.4)}</td>
+      <td>${usd(r.avg7d)}</td>
+      <td>${usd(r.rev7d)}</td>
+      <td>${usd(r.rev30d)}</td>
+      <td>${spark(state.history?.[r.name])}</td>
+    </tr>`).join('')}</tbody>`;
+}
+
+function render() { renderStatus(); renderAlerts(); renderHyperliquid(); renderRanking(); }
+
+(async () => {
+  const db = await window.claude?.use?.('db');
+  if (!db) { $('status').innerHTML = '<span>Abre esta página en Claude para ver los datos.</span>'; return; }
+  db.doc('meta/state').onSnapshot(snap => {
+    if (!snap.exists) { $('status').innerHTML = '<span>Esperando la primera recogida de datos.</span>'; return; }
+    state = snap.data();
+    render();
+  }, () => { $('status').innerHTML = '<span>No se pudieron cargar los datos. Recarga la página.</span>'; });
+})();
+
+let rt; addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => state && renderHyperliquid(), 150); });
+</script>
